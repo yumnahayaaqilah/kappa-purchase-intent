@@ -1,15 +1,15 @@
 """
 Evaluasi lengkap dari eval_log (hasil pipeline). Tidak perlu Spark/Kafka, hanya PostgreSQL yang aktif.
 
-    python evaluasi_lengkap.py
-    python evaluasi_lengkap.py --train-frac 0.7 --thr-pct 95 --top-pct 5
+    python -m evaluation.full_evaluation
+    python -m evaluation.full_evaluation --train-frac 0.7 --thr-pct 95 --top-pct 5
 
 Protokol:
   - Urutkan sesi menurut waktu prediksi. Bagian awal (train-frac) = "periode awal", sisanya = "periode uji".
   - Ambang keputusan biner = persentil thr-pct dari skor pada periode awal (ditetapkan SEBELUM melihat periode uji).
   - Skor River adalah skor yang dibuat pipeline saat itu (prequential), bukan dihitung ulang.
   - Pembanding sklearn dilatih sekali pada periode awal lalu dibekukan.
-Keluaran: hasil_metrik.csv, hasil_kalibrasi.csv, hasil_ablasi.csv, hasil_bulanan.csv
+Keluaran: results/metrics.csv, results/calibration.csv, results/ablation.csv, results/monthly.csv
 """
 import argparse
 
@@ -133,7 +133,7 @@ res.append(r)
 brier_const = brier_score_loss(uji["y"], np.full(len(uji), base))
 tab = pd.DataFrame(res)
 tab.loc[tab.model == "Acak", ["Brier", "LogLoss"]] = [brier_const, log_loss(uji["y"], np.full(len(uji), base))]
-tab.to_csv("hasil_metrik.csv", index=False)
+tab.to_csv("results/metrics.csv", index=False)
 
 print("=== 1. METRIK PADA PERIODE UJI ===")
 print(tab.round(4).to_string(index=False))
@@ -148,7 +148,7 @@ uji["bin"] = pd.qcut(uji["prob"].rank(method="first"), 10, labels=False)
 kal = uji.groupby("bin").agg(sesi=("y", "size"), rata_skor=("prob", "mean"), proporsi_beli_nyata=("y", "mean")).reset_index()
 kal["selisih"] = kal["rata_skor"] - kal["proporsi_beli_nyata"]
 ece = float((kal["sesi"] / kal["sesi"].sum() * kal["selisih"].abs()).sum())
-kal.to_csv("hasil_kalibrasi.csv", index=False)
+kal.to_csv("results/calibration.csv", index=False)
 print("=== 3. KALIBRASI River (10 kelompok sama besar, periode uji) ===")
 print(kal.round(4).to_string(index=False))
 print(f"ECE (rata-rata selisih berbobot) = {ece:.4f}  | selisih>0: skor terlalu tinggi, <0: terlalu rendah\n")
@@ -169,7 +169,7 @@ for nama, cols in subsets.items():
     rows.append({"fitur": nama, "ROC-AUC": roc_auc_score(y, p), "PR-AUC": average_precision_score(y, p),
                  f"Precision@{args.top_pct:g}%": pk, f"Recall@{args.top_pct:g}%": rk})
 abl = pd.DataFrame(rows).sort_values("ROC-AUC", ascending=False)
-abl.to_csv("hasil_ablasi.csv", index=False)
+abl.to_csv("results/ablation.csv", index=False)
 print(abl.round(4).to_string(index=False), "\n")
 
 # ------------------------------------------------------------------ bulanan
@@ -187,6 +187,6 @@ for b, g in df.groupby("bulan"):
         row["sklearn_AUC_uji"] = roc_auc_score(gs["y"], gs["p_sk"])
     rows.append(row)
 bul = pd.DataFrame(rows)
-bul.to_csv("hasil_bulanan.csv", index=False)
+bul.to_csv("results/monthly.csv", index=False)
 print(bul.round(4).to_string(index=False))
-print("\nSelesai. Berkas: hasil_metrik.csv, hasil_kalibrasi.csv, hasil_ablasi.csv, hasil_bulanan.csv")
+print("\nSelesai. Berkas: results/metrics.csv, results/calibration.csv, results/ablation.csv, results/monthly.csv")

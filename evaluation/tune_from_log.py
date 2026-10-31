@@ -11,8 +11,8 @@ Yang dibandingkan sekarang:
 Fitur turunan dihitung dari empat fitur mentah yang SUDAH tersimpan di eval_log, jadi tabel tidak berubah.
 Batas kelompok harga (EDGES) dihitung dari 70% awal dan dicetak; angka itulah yang nanti dipakai tetap di pipeline.
 
-    python tune_from_log.py
-Hasil: tabel di layar dan hasil_tuning.csv
+    python -m evaluation.tune_from_log
+Hasil: tabel di layar dan results/tuning.csv
 """
 import time
 
@@ -157,6 +157,6 @@ print()
 pd.set_option("display.width", 220)
 pd.set_option("display.max_colwidth", 70)
 print(out.to_string(index=False))
-out.to_csv("hasil_tuning.csv", index=False)
-print("\nDisimpan di hasil_tuning.csv")
+out.to_csv("results/tuning.csv", index=False)
+print("\nDisimpan di results/tuning.csv")
 print(f"Catat angka ini untuk pipeline: EDGES = ({EDGES[0]!r}, {EDGES[1]!r})")

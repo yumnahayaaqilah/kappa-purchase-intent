@@ -4,7 +4,7 @@ December 2019 (most frequent code per product in each period).
 
     python -m prep.check_category_shift
 
-Output: hasil/report_category_shift.csv (top code transitions)
+Output: results/report_category_shift.csv (top code transitions)
 """
 import argparse
 import os
@@ -15,7 +15,7 @@ import pandas as pd
 ap = argparse.ArgumentParser()
 ap.add_argument("--sample", default="sample/sample_10pct_7bulan.csv")
 ap.add_argument("--split", default="2019-12", help="first month of the second period")
-ap.add_argument("--outdir", default="hasil")
+ap.add_argument("--outdir", default="results")
 args = ap.parse_args()
 
 con = duckdb.connect()

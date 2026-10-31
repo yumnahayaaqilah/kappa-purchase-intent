@@ -9,7 +9,7 @@ Statistics for the report, computed on the session sample:
     python -m prep.report_stats
 
 Event order inside a session follows the sample file order, the same order the producer
-sends to Kafka. Outputs go to hasil/report_*.csv.
+sends to Kafka. Outputs go to results/report_*.csv.
 """
 import argparse
 import os
@@ -23,7 +23,7 @@ ap.add_argument("--sample", default="sample/sample_10pct_7bulan.csv")
 ap.add_argument("--k", type=int, default=3)
 ap.add_argument("--timeout-min", type=int, default=30)
 ap.add_argument("--eval-table", default="eval_log_v1")
-ap.add_argument("--outdir", default="hasil")
+ap.add_argument("--outdir", default="results")
 args = ap.parse_args()
 
 os.makedirs(args.outdir, exist_ok=True)

@@ -2,10 +2,10 @@
 Uji offline: apakah fitur turunan (interaksi, kelompok harga, indikator) menaikkan kualitas logistic regression
 mendekati gradient boosting? Tidak ada informasi baru, hanya kombinasi dari empat fitur yang sudah ada.
 
-    python uji_interaksi.py
-    python uji_interaksi.py --train-frac 0.7 --max-train 1000000
+    python -m evaluation.compare_interactions
+    python -m evaluation.compare_interactions --train-frac 0.7 --max-train 1000000
 
-Hanya perlu PostgreSQL aktif. Keluaran: hasil_interaksi.csv
+Hanya perlu PostgreSQL aktif. Keluaran: results/interactions.csv
 """
 import argparse
 import time
@@ -108,7 +108,7 @@ gb = HistGradientBoostingClassifier(random_state=0, max_depth=6, max_iter=300, l
 rows.append(nilai("Acuan atas: gradient boosting (4 fitur dasar)", gb.predict_proba(uji[BASE])[:, 1], time.time() - t))
 
 tab = pd.DataFrame(rows)
-tab.to_csv("hasil_interaksi.csv", index=False)
+tab.to_csv("results/interactions.csv", index=False)
 pd.set_option("display.width", 250)
 pd.set_option("display.max_colwidth", 70)
 print(f"Latih {len(tr):,} | uji {len(uji):,} | proporsi beli uji {y.mean():.4f}\n")

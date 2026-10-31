@@ -3,7 +3,7 @@ Membuat SAMPEL SESSION dari seluruh CSV di data/ (session utuh, urut waktu).
 Pemilihan session deterministik lewat hash(user_session), jadi session tidak terpotong
 dan rentang waktu tetap seluruh periode.
 
-    python make_sample.py --pct 10      # hasil: sample/sample_10pct.csv
+    python -m prep.make_sample --pct 10      # hasil: sample/sample_10pct.csv
 """
 import argparse
 import os

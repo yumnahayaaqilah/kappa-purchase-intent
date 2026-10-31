@@ -4,7 +4,7 @@ Compare the 10% session sample with the full population, per month and per categ
     python -m prep.validate_sample
 
 Population and sample are filtered the same way (non-empty user_session).
-Outputs: hasil/sample_validation_monthly.csv, hasil/sample_validation_category.csv
+Outputs: results/sample_validation_monthly.csv, results/sample_validation_category.csv
 """
 import argparse
 import os
@@ -16,7 +16,7 @@ import pandas as pd
 ap = argparse.ArgumentParser()
 ap.add_argument("--population", nargs="+", default=["data/20*.csv", "data/20*.csv.gz"])
 ap.add_argument("--sample", default="sample/sample_10pct_7bulan.csv")
-ap.add_argument("--outdir", default="hasil")
+ap.add_argument("--outdir", default="results")
 args = ap.parse_args()
 
 os.makedirs(args.outdir, exist_ok=True)

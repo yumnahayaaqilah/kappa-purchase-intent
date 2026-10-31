@@ -5,7 +5,7 @@ category_code is consistent, then measure how much of the sample it can label.
     python -m prep.build_product_category
 
 Output: ref/product_category.parquet (product_id, category_code, category_top)
-        hasil/report_category_remap.csv (coverage per month)
+        results/report_category_remap.csv (coverage per month)
 """
 import argparse
 import os
@@ -17,7 +17,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--source", nargs="+", default=["data/2019-Oct.csv", "data/2019-Nov.csv"])
 ap.add_argument("--sample", default="sample/sample_10pct_7bulan.csv")
 ap.add_argument("--out", default="ref/product_category.parquet")
-ap.add_argument("--outdir", default="hasil")
+ap.add_argument("--outdir", default="results")
 args = ap.parse_args()
 
 os.makedirs(os.path.dirname(args.out), exist_ok=True)

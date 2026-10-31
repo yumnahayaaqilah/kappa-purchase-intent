@@ -2,11 +2,11 @@
 Cek batas kemampuan fitur: apakah model non-linear jauh lebih baik dari logistic regression
 pada EMPAT FITUR YANG SAMA (jumlah keranjang, harga rata-rata, harga tertinggi, durasi)?
 
-    python uji_nonlinear.py
-    python uji_nonlinear.py --train-frac 0.7 --max-train 1000000
+    python -m evaluation.compare_nonlinear
+    python -m evaluation.compare_nonlinear --train-frac 0.7 --max-train 1000000
 
-Hanya perlu PostgreSQL aktif. Latih sekali pada periode awal, uji pada periode uji (sama dengan evaluasi_lengkap.py).
-Keluaran: hasil_nonlinear.csv
+Hanya perlu PostgreSQL aktif. Latih sekali pada periode awal, uji pada periode uji (sama dengan full_evaluation.py).
+Keluaran: results/nonlinear.csv
 """
 import argparse
 import time
@@ -73,7 +73,7 @@ for nama, kw in [("Gradient boosting (dangkal)", dict(max_depth=3, max_iter=200,
     rows.append(nilai(nama, gb.predict_proba(uji[FEATS])[:, 1], time.time() - t))
 
 tab = pd.DataFrame(rows)
-tab.to_csv("hasil_nonlinear.csv", index=False)
+tab.to_csv("results/nonlinear.csv", index=False)
 pd.set_option("display.width", 200)
 print(tab.round(4).to_string(index=False))
 

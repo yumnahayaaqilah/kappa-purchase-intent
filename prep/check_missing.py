@@ -1,4 +1,4 @@
-"""Hitung nilai kosong per kolom pada semua CSV di data/. Hasil disimpan ke cek_missing.csv"""
+"""Hitung nilai kosong per kolom pada semua CSV di data/. Hasil disimpan ke results/missing_values.csv"""
 import duckdb
 
 con = duckdb.connect()
@@ -32,4 +32,4 @@ import pandas as pd
 res = pd.DataFrame(out)
 print(f"Total baris: {total:,}\n")
 print(res.to_string(index=False))
-res.to_csv("cek_missing.csv", index=False)
+res.to_csv("results/missing_values.csv", index=False)

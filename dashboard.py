@@ -15,7 +15,7 @@ st.set_page_config(page_title="Pemantauan Prediksi Pembelian", layout="wide", in
 
 BG, CARD, LINE, TXT, MUTED, SUB = "#0b1220", "#111a2e", "#1f2b45", "#e8edf7", "#8a97b3", "#c3cbe0"
 BLUE, ORANGE = "#3987e5", "#d95926"          # seri 1 dan 2 (sudah divalidasi pada permukaan gelap)
-EDGES = (4.689940164029909, 5.635253781136272)  # batas kelompok harga dari 70% awal data (evaluasi/tune_from_log.py)
+EDGES = (4.689940164029909, 5.635253781136272)  # batas kelompok harga dari 70% awal data (evaluation/tune_from_log.py)
 H1, H2, H3 = 264, 264, 252                    # tinggi tiga baris kartu (px)
 
 st.markdown(f"""<style>

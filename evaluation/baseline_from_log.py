@@ -4,7 +4,7 @@ Pembanding model batch (sklearn) yang dihitung dari CATATAN PIPELINE (eval_log) 
   - Model online dinilai dari probabilitas yang dicatat pipeline saat prediksi (prequential)
     pada sesi uji yang SAMA.
 
-    python baseline_from_log.py
+    python -m evaluation.baseline_from_log
 """
 import numpy as np
 import pandas as pd
@@ -65,5 +65,5 @@ rows = [
 ]
 out = pd.DataFrame(rows)
 print(out.to_string(index=False))
-out.to_csv("hasil_evaluasi_pipeline.csv", index=False)
-print("Disimpan di hasil_evaluasi_pipeline.csv")
+out.to_csv("results/pipeline_vs_batch.csv", index=False)
+print("Disimpan di results/pipeline_vs_batch.csv")

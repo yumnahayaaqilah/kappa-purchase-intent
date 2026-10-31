@@ -2,11 +2,11 @@
 Evaluasi offline model prediksi pembelian pada SELURUH data (semua CSV di folder data/).
 
 Cara pakai:
-    python evaluate_offline.py                 # K = 3, 5, 10 (snapshot awal session)
-    python evaluate_offline.py --rebuild       # jalankan ini setelah menambah bulan baru ke data/
-    python evaluate_offline.py --k 5           # satu nilai K saja
-    python evaluate_offline.py --with-time     # tambah fitur jam (sin/cos) dan akhir pekan
-    python evaluate_offline.py --k 3 --tune    # bandingkan beberapa kecepatan belajar River + cetak bobot
+    python -m evaluation.evaluate_offline                 # K = 3, 5, 10 (snapshot awal session)
+    python -m evaluation.evaluate_offline --rebuild       # jalankan ini setelah menambah bulan baru ke data/
+    python -m evaluation.evaluate_offline --k 5           # satu nilai K saja
+    python -m evaluation.evaluate_offline --with-time     # tambah fitur jam (sin/cos) dan akhir pekan
+    python -m evaluation.evaluate_offline --k 3 --tune    # bandingkan beberapa kecepatan belajar River + cetak bobot
 
 River memakai kecepatan belajar menurun bertahap (hasil --tune); harga <= 0 dianggap kosong.
 Semua model memakai DATA LATIH YANG SAMA dan DATA UJI YANG SAMA (sampel acak yang sama),
@@ -212,5 +212,5 @@ for k in args.k:
 
 if rows:
     out = pd.DataFrame(rows)
-    out.to_csv("hasil_evaluasi.csv", index=False)
-    print("Ringkasan semua K disimpan di hasil_evaluasi.csv")
+    out.to_csv("results/offline_evaluation.csv", index=False)
+    print("Ringkasan semua K disimpan di results/offline_evaluation.csv")

@@ -2,7 +2,7 @@
 Menggabungkan beberapa file sampel yang sudah urut waktu menjadi satu file.
 Header hanya diambil dari file pertama; header file berikutnya harus sama persis.
 
-    python prep\\gabung_sampel.py --inputs sample/sample_10pct.csv sample/sample_10pct_marapr.csv --out sample/sample_10pct_7bulan.csv
+    python -m prep.merge_samples --inputs sample/sample_10pct.csv sample/sample_10pct_marapr.csv --out sample/sample_10pct_7bulan.csv
 """
 import argparse
 import os

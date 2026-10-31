@@ -1,12 +1,12 @@
 """
 Tabel trade-off ambang dari eval_log (hanya perlu PostgreSQL aktif, pipeline tidak dijalankan ulang).
 
-    python tabel_ambang.py
-    python tabel_ambang.py --train-frac 0.7
+    python -m evaluation.threshold_table
+    python -m evaluation.threshold_table --train-frac 0.7
 
-Protokol sama dengan evaluasi_lengkap.py: periode uji = bagian akhir menurut waktu prediksi,
+Protokol sama dengan full_evaluation.py: periode uji = bagian akhir menurut waktu prediksi,
 skor = skor River yang dibuat pipeline saat itu. Setiap baris = "tandai X% sesi dengan skor tertinggi".
-Keluaran: hasil_ambang.csv
+Keluaran: results/thresholds.csv
 """
 import argparse
 
@@ -54,7 +54,7 @@ for pct in args.tandai:
                  "precision": prec, "recall": rec, "F1": f1, "lift": prec / base, "TP": tp, "FP": fp, "FN": fn})
 
 tab = pd.DataFrame(rows)
-tab.to_csv("hasil_ambang.csv", index=False)
+tab.to_csv("results/thresholds.csv", index=False)
 pd.set_option("display.width", 200)
 print(tab.round(4).to_string(index=False))
 best = tab.loc[tab["F1"].idxmax()]
