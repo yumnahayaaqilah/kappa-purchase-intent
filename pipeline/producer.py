@@ -12,7 +12,7 @@ from kafka import KafkaProducer
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--file", default="sample/sample_10pct.csv")
-ap.add_argument("--topic", default="ecommerce-v2")
+ap.add_argument("--topic", default="clickstream")
 ap.add_argument("--bootstrap", default="localhost:9092")
 ap.add_argument("--limit", type=int, default=0, help="0 = kirim semua")
 ap.add_argument("--rate", type=int, default=0, help="batas event per detik, 0 = tanpa batas")
