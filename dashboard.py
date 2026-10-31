@@ -315,7 +315,7 @@ def live():
         st.info("Belum ada data. Jalankan spark_stream_v2.py lalu producer_v2.py.")
         return
     s = s.iloc[0]
-    until = pd.Timestamp(s.last_event_time).strftime("%d %b %Y %H:%M") if s.last_event_time is not None else "-"
+    until = pd.Timestamp(s.last_event_time).tz_convert("UTC").strftime("%d %b %Y %H:%M") if s.last_event_time is not None else "-"
 
     met = q("SELECT day, n, pos_rate, auc, pr_auc, p_at_5 FROM metrics_daily ORDER BY day")
     met["day"] = pd.to_datetime(met["day"])
