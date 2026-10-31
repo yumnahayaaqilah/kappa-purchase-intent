@@ -1,10 +1,13 @@
 """
 Stream processor (Kappa processing layer): sessions and online purchase prediction.
 
-Spark Structured Streaming keeps one state per user_session (applyInPandasWithState with an
-event-time timeout) and emits a row when a session reaches its 3rd event and when it ends.
-The driver applies those rows to an online logistic regression (River) and writes results
-to PostgreSQL. The same code reads either Kafka or the HDFS data lake (re-compute).
+Two streaming queries read the same source:
+  sessions     Spark keeps session state per hash bucket of user_session (applyInPandasWithState,
+               event-time timeout) and emits a row when a session reaches its 3rd event and when
+               it ends; the driver applies them to an online logistic regression (River).
+  descriptive  event counts per product category (broadcast join with the category table)
+               and pipeline totals.
+Both write to PostgreSQL. The same code reads either Kafka or the HDFS data lake (re-compute).
 
     python -m pipeline.stream_processor --reset                 # fresh run from Kafka
     python -m pipeline.stream_processor                         # continue after a stop
@@ -21,6 +24,7 @@ ap.add_argument("--bootstrap", default="localhost:9092")
 ap.add_argument("--topic", default="clickstream")
 ap.add_argument("--lake", default="hdfs://localhost:8020/datalake/raw/clickstream")
 ap.add_argument("--checkpoint", default="checkpoint/stream_processor", help="local folder")
+ap.add_argument("--categories", default="ref/product_category.parquet", help="product_id -> category_top")
 ap.add_argument("--max-offsets", type=int, default=500_000, help="max Kafka events per micro-batch")
 ap.add_argument("--max-files", type=int, default=1, help="lake files per micro-batch")
 ap.add_argument("--watermark", default="1 minute")
@@ -43,6 +47,7 @@ from pyspark.sql.types import (DoubleType, IntegerType, LongType, StringType, St
                                TimestampType)
 
 from db_config import DB
+from pipeline.descriptive import Descriptive
 from pipeline.learner import Learner
 from pipeline.sessions import N_BUCKETS, OUTPUT_SCHEMA, STATE_SCHEMA, update_bucket
 
@@ -102,7 +107,7 @@ def main():
     spark = (
         builder
         .config("spark.driver.memory", "4g")
-        # UTC written as a fixed offset: Arrow on Windows has no time-zone database for named zones
+        # on Windows, Arrow needs pyarrow.util.download_tzdata_on_windows() once for this to work
         .config("spark.sql.session.timeZone", "UTC")
         .config("spark.sql.shuffle.partitions", str(args.partitions))
         .config("spark.sql.streaming.minBatchesToRetain", "20")   # bucket state is rewritten every batch
@@ -111,10 +116,39 @@ def main():
     )
     spark.sparkContext.setLogLevel("WARN")
 
+    sessions = session_query(spark)
+    descriptive = descriptive_query(spark)
+    print(f"Queries started (source: {args.source}): sessions, descriptive", flush=True)
+    try:
+        if args.once:
+            sessions.awaitTermination()
+            descriptive.awaitTermination()
+        else:
+            spark.streams.awaitAnyTermination()     # stop everything if one query fails
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for q in spark.streams.active:
+            q.stop()
+        spark.stop()
+
+
+def parse_time(df):
+    return df.withColumn("event_ts", F.to_timestamp(F.regexp_replace("event_time", " UTC$", ""),
+                                                    "yyyy-MM-dd HH:mm:ss"))
+
+
+def start(df, handler, name):
+    writer = (df.writeStream.queryName(name)
+              .foreachBatch(handler)
+              .option("checkpointLocation", os.path.join(args.checkpoint, name)))
+    writer = writer.trigger(availableNow=True) if args.once else writer.trigger(processingTime="5 seconds")
+    return writer.start()
+
+
+def session_query(spark):
     events = (
-        read_events(spark)
-        .where(F.col("user_session").isNotNull() & (F.col("user_session") != ""))
-        .withColumn("event_ts", F.to_timestamp(F.regexp_replace("event_time", " UTC$", ""), "yyyy-MM-dd HH:mm:ss"))
+        parse_time(read_events(spark).where(F.col("user_session").isNotNull() & (F.col("user_session") != "")))
         .withColumn("ts_ms", F.unix_millis("event_ts"))
         .withWatermark("event_ts", args.watermark)
         .withColumn("bucket", F.pmod(F.hash("user_session"), F.lit(N_BUCKETS)))
@@ -122,19 +156,16 @@ def main():
     )
     sessions = events.groupBy("bucket").applyInPandasWithState(
         update_bucket, OUTPUT_SCHEMA, STATE_SCHEMA, "append", GroupStateTimeout.EventTimeTimeout)
+    return start(sessions, Learner(DB), "sessions")
 
-    writer = (sessions.writeStream
-              .foreachBatch(Learner(DB))
-              .option("checkpointLocation", os.path.join(args.checkpoint, "sessions")))
-    writer = writer.trigger(availableNow=True) if args.once else writer.trigger(processingTime="5 seconds")
-    query = writer.start()
-    print(f"Session query started (source: {args.source})", flush=True)
-    try:
-        query.awaitTermination()
-    except KeyboardInterrupt:
-        query.stop()
-    finally:
-        spark.stop()
+
+def descriptive_query(spark):
+    categories = (spark.read.parquet(args.categories)
+                  .select(F.col("product_id").cast("long"), "category_top")
+                  .cache())
+    print(f"Category table: {categories.count():,} products", flush=True)
+    events = parse_time(read_events(spark)).select("product_id", "event_type", "event_ts", "kafka_offset")
+    return start(events, Descriptive(DB, categories), "descriptive")
 
 
 if __name__ == "__main__":
