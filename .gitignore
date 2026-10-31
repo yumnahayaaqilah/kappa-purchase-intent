@@ -1,0 +1,11 @@
+data/
+sample/
+checkpoint/
+duck_tmp/
+_arsip/
+__pycache__/
+*.pkl
+*.tmp
+*.duckdb
+*.duckdb.wal
+.env

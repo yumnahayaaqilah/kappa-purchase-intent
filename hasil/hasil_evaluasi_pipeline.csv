@@ -1,0 +1,4 @@
+model,ROC-AUC,AUC-harian,PR-AUC,Precision@5%
+Acak (rujukan),0.5,0.5,0.0853,0.0853
+Batch: LogReg sklearn (dilatih sekali),0.749,0.75,0.2739,0.3728
+Online: River dalam pipeline (prequential),0.7491,0.7486,0.298,0.431

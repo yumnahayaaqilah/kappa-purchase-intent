@@ -1,0 +1,7 @@
+model,ROC-AUC,AUC-harian,PR-AUC,Precision@5%,Recall@5%
+"Rujukan: sklearn, 4 fitur dasar (dilatih sekali)",0.7477,0.7489,0.2787,0.394,0.232
+"Rujukan: sklearn, dasar + turunan (dilatih sekali)",0.7541,0.7553,0.3285,0.4826,0.2842
+"SAAT INI: 4 fitur dasar, AdaGrad 0.5",0.7482,0.7474,0.2957,0.4308,0.2537
+"Fitur dasar + turunan, AdaGrad 0.5",0.7522,0.7513,0.3199,0.4605,0.2712
+"Fitur dasar + turunan, AdaGrad 0.2",0.7526,0.7517,0.314,0.4564,0.2688
+"Fitur dasar + turunan, AdaGrad 1.0",0.7521,0.7511,0.3206,0.4601,0.271
