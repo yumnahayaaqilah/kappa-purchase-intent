@@ -5,21 +5,26 @@ Rule: events of one user_session arrive in Kafka-offset order. A gap of more tha
 GAP_MIN minutes ends the session; later events of that user_session are ignored.
 When a session reaches its K-th event with no purchase among the first K, a "pred"
 row is emitted; when a predicted session ends, a "close" row with the label follows.
+
+Spark keeps state per bucket of sessions (hash of user_session), not per session: the
+per-group overhead of applyInPandasWithState is high, and one Python call per bucket
+handles thousands of sessions at once.
 """
 import math
+import pickle
 
 import pandas as pd
 
 K = 3
 GAP_MIN = 30
 GAP_MS = GAP_MIN * 60 * 1000
-RETENTION_MS = 7 * 24 * 3600 * 1000      # keep a closed session as a tombstone for 7 days of event time
+RETENTION_MS = 7 * 24 * 3600 * 1000      # remember a closed session for 7 days of event time
+N_BUCKETS = 256
 OPEN, CLOSED = 0, 1
 
 OUTPUT_SCHEMA = ("kind string, session_id string, t_event long, t_pred long, n_events int, "
                  "f_c double, f_avg_price double, f_max_price double, f_dur double, y int")
-STATE_SCHEMA = ("status int, n int, t_first long, t_last long, t_k long, c int, ps double, pc int, "
-                "pmax double, buy_k boolean, y boolean, predicted boolean")
+STATE_SCHEMA = "blob binary"            # pickled {"open": {sid: Session tuple}, "closed": {sid: t_last}}
 OUT_COLS = ["kind", "session_id", "t_event", "t_pred", "n_events",
             "f_c", "f_avg_price", "f_max_price", "f_dur", "y"]
 FEATURES = ["c", "avg_price", "max_price", "dur"]
@@ -89,27 +94,46 @@ class Session:
         self.status = CLOSED
 
 
-def update_session(key, pdfs, state):
-    """Function for applyInPandasWithState (event-time timeout)."""
-    sid = key[0]
-    out = []
-    s = Session(tuple(state.get)) if state.exists else Session()
-    if state.hasTimedOut:
-        s.close(out, sid)
+def update_bucket(key, pdfs, state):
+    """Function for applyInPandasWithState, grouped by bucket (event-time timeout)."""
+    if state.exists:
+        st = pickle.loads(state.get[0])
+        open_, closed = {sid: Session(v) for sid, v in st["open"].items()}, st["closed"]
     else:
-        pdf = pd.concat(list(pdfs), ignore_index=True).sort_values("kafka_offset", kind="stable")
-        for ts, et, price in zip(pdf["ts_ms"].tolist(), pdf["event_type"].tolist(), pdf["price"].tolist()):
-            s.add(int(ts), et, price, out, sid)
+        open_, closed = {}, {}
+    out = []
+
+    if not state.hasTimedOut:
+        rows = []
+        for pdf in pdfs:
+            rows.extend(zip(pdf["kafka_offset"].tolist(), pdf["user_session"].tolist(), pdf["ts_ms"].tolist(),
+                            pdf["event_type"].tolist(), pdf["price"].tolist()))
+        rows.sort()                                          # Kafka-offset order
+        for _, sid, ts, et, price in rows:
+            if sid in closed:
+                continue
+            s = open_.get(sid)
+            if s is None:
+                s = open_[sid] = Session()
+            s.add(ts, et, price, out, sid)
+            if s.status == CLOSED:
+                closed[sid] = s.t_last
+                del open_[sid]
 
     wm = state.getCurrentWatermarkMs()
-    if s.status == OPEN and s.t_last + GAP_MS <= wm:   # the gap is already over in event time
+    for sid in [sid for sid, s in open_.items() if s.t_last + GAP_MS <= wm]:   # gap already over in event time
+        s = open_.pop(sid)
         s.close(out, sid)
-    if s.status == OPEN:
-        state.update(s.to_tuple())
-        state.setTimeoutTimestamp(s.t_last + GAP_MS)
-    elif s.t_last + RETENTION_MS > wm:
-        state.update(s.to_tuple())
-        state.setTimeoutTimestamp(s.t_last + RETENTION_MS)
+        closed[sid] = s.t_last
+    for sid in [sid for sid, t in closed.items() if t + RETENTION_MS <= wm]:
+        del closed[sid]
+
+    deadlines = [s.t_last + GAP_MS for s in open_.values()] + [t + RETENTION_MS for t in closed.values()]
+    if deadlines:
+        state.update((pickle.dumps({"open": {sid: s.to_tuple() for sid, s in open_.items()}, "closed": closed},
+                                   protocol=pickle.HIGHEST_PROTOCOL),))
+        state.setTimeoutTimestamp(min(deadlines))
     else:
         state.remove()
-    yield pd.DataFrame(out, columns=OUT_COLS)
+    if out:
+        yield pd.DataFrame(out, columns=OUT_COLS)

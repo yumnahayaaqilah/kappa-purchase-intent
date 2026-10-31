@@ -7,6 +7,7 @@ prediction before learning at equal times. Model state, predictions, evaluation 
 the batch id are committed in one transaction, so a repeated batch is skipped safely.
 """
 import pickle
+import time
 from datetime import datetime, timezone
 
 import numpy as np
@@ -60,7 +61,9 @@ class Learner:
         if batch_id <= self.last_batch:
             print(f"Batch {batch_id}: already committed, skipped", flush=True)
             return
+        t0 = time.time()
         pdf = batch_df.toPandas()
+        t_spark = time.time() - t0
         if pdf.empty:
             self._commit_progress_only(batch_id)
             return
@@ -126,6 +129,7 @@ class Learner:
             conn.close()
         self.last_batch = batch_id
         print(f"Batch {batch_id}: {len(preds):,} predictions | {len(evals):,} sessions learned"
+              f" | spark {t_spark:.1f}s, model+db {time.time() - t0 - t_spark:.1f}s"
               + (f" | {missing} close rows without prediction" if missing else ""), flush=True)
 
     def _update_daily(self, cur, days):

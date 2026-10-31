@@ -21,7 +21,7 @@ ap.add_argument("--bootstrap", default="localhost:9092")
 ap.add_argument("--topic", default="clickstream")
 ap.add_argument("--lake", default="hdfs://localhost:8020/datalake/raw/clickstream")
 ap.add_argument("--checkpoint", default="checkpoint/stream_processor", help="local folder")
-ap.add_argument("--max-offsets", type=int, default=50_000, help="Kafka events per micro-batch")
+ap.add_argument("--max-offsets", type=int, default=500_000, help="max Kafka events per micro-batch")
 ap.add_argument("--max-files", type=int, default=1, help="lake files per micro-batch")
 ap.add_argument("--watermark", default="1 minute")
 ap.add_argument("--partitions", type=int, default=4, help="state partitions (parallel tasks)")
@@ -44,7 +44,7 @@ from pyspark.sql.types import (DoubleType, IntegerType, LongType, StringType, St
 
 from db_config import DB
 from pipeline.learner import Learner
-from pipeline.sessions import OUTPUT_SCHEMA, STATE_SCHEMA, update_session
+from pipeline.sessions import N_BUCKETS, OUTPUT_SCHEMA, STATE_SCHEMA, update_bucket
 
 EVENT_FIELDS = [
     StructField("event_time", StringType()),
@@ -102,8 +102,10 @@ def main():
     spark = (
         builder
         .config("spark.driver.memory", "4g")
+        # UTC written as a fixed offset: Arrow on Windows has no time-zone database for named zones
         .config("spark.sql.session.timeZone", "UTC")
         .config("spark.sql.shuffle.partitions", str(args.partitions))
+        .config("spark.sql.streaming.minBatchesToRetain", "20")   # bucket state is rewritten every batch
         .config("spark.hadoop.dfs.client.use.datanode.hostname", "true")
         .getOrCreate()
     )
@@ -115,10 +117,11 @@ def main():
         .withColumn("event_ts", F.to_timestamp(F.regexp_replace("event_time", " UTC$", ""), "yyyy-MM-dd HH:mm:ss"))
         .withColumn("ts_ms", F.unix_millis("event_ts"))
         .withWatermark("event_ts", args.watermark)
-        .select("user_session", "event_type", "price", "ts_ms", "kafka_offset", "event_ts")
+        .withColumn("bucket", F.pmod(F.hash("user_session"), F.lit(N_BUCKETS)))
+        .select("bucket", "user_session", "event_type", "price", "ts_ms", "kafka_offset", "event_ts")
     )
-    sessions = events.groupBy("user_session").applyInPandasWithState(
-        update_session, OUTPUT_SCHEMA, STATE_SCHEMA, "append", GroupStateTimeout.EventTimeTimeout)
+    sessions = events.groupBy("bucket").applyInPandasWithState(
+        update_bucket, OUTPUT_SCHEMA, STATE_SCHEMA, "append", GroupStateTimeout.EventTimeTimeout)
 
     writer = (sessions.writeStream
               .foreachBatch(Learner(DB))
