@@ -1,0 +1,2 @@
+eligible,rate_full_session,rate_timeout_rule,with_gap_after_k,buy_only_after_gap,buy_only_after_gap_pct_of_full_positives,logged_sessions,matched_in_sample,agree_full,agree_timeout,logged0_full1,logged1_full0,logged0_timeout1,logged1_timeout0
+3801419,0.08441374128976574,0.08273279004498058,139055,6390,1.9913241838375528,2690380,2690380,2688397,2688661,1983,0,0,1719
