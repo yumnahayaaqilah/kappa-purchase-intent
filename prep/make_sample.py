@@ -14,11 +14,12 @@ import duckdb
 ap = argparse.ArgumentParser()
 ap.add_argument("--pct", type=int, default=10, help="persen session yang diambil (1-100)")
 ap.add_argument("--glob", default="data/20*.csv")
+ap.add_argument("--out", default=None, help="file keluaran; default sample/sample_<pct>pct.csv")
 args = ap.parse_args()
 
 os.makedirs("sample", exist_ok=True)
 os.makedirs("duck_tmp", exist_ok=True)
-out = f"sample/sample_{args.pct}pct.csv"
+out = args.out or f"sample/sample_{args.pct}pct.csv"
 
 con = duckdb.connect()
 con.execute("PRAGMA memory_limit='8GB'")
