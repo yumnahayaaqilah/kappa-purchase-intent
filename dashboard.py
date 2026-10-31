@@ -15,7 +15,7 @@ st.set_page_config(page_title="Pemantauan Prediksi Pembelian", layout="wide", in
 
 BG, CARD, LINE, TXT, MUTED, SUB = "#0b1220", "#111a2e", "#1f2b45", "#e8edf7", "#8a97b3", "#c3cbe0"
 BLUE, ORANGE = "#3987e5", "#d95926"          # seri 1 dan 2 (sudah divalidasi pada permukaan gelap)
-EDGES = (4.689940164029909, 5.635253781136272)  # batas kelompok harga, SAMA dengan spark_stream_v2.py
+EDGES = (4.689940164029909, 5.635253781136272)  # batas kelompok harga dari 70% awal data (evaluasi/tune_from_log.py)
 H1, H2, H3 = 264, 264, 252                    # tinggi tiga baris kartu (px)
 
 st.markdown(f"""<style>
@@ -312,7 +312,7 @@ class Hist:
 def live():
     s = q("SELECT * FROM pipeline_stats WHERE id = 1")
     if s.empty:
-        st.info("Belum ada data. Jalankan spark_stream_v2.py lalu producer_v2.py.")
+        st.info("Belum ada data. Jalankan python -m pipeline.stream_processor lalu python -m pipeline.producer.")
         return
     s = s.iloc[0]
     until = pd.Timestamp(s.last_event_time).tz_convert("UTC").strftime("%d %b %Y %H:%M") if s.last_event_time is not None else "-"

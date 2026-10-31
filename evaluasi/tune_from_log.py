@@ -32,7 +32,7 @@ NAMES = ["c", "avg_price", "max_price", "dur"]
 
 def fitur_turunan(x, edges):
     """x: dict {c, avg_price, max_price, dur}. Kembalikan x ditambah fitur turunan.
-    Fungsi yang SAMA nanti dipakai di spark_stream_v2.py (make_features)."""
+    Bila fitur turunan dipakai, fungsi yang sama harus diterapkan di pipeline/stream_processor.py (make_features)."""
     c, avg, mx, dur = x["c"], x["avg_price"], x["max_price"], x["dur"]
     ada = avg > 0
     rendah = ada and avg < edges[0]

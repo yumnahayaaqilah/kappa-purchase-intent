@@ -1,8 +1,8 @@
 """
 Mengirim file sampel ke Kafka secepat mungkin (atau dibatasi --rate event/detik).
 
-    python producer_v2.py --limit 2000000      # uji kecepatan 2 juta event
-    python producer_v2.py                      # kirim semuanya
+    python -m pipeline.producer --limit 2000000      # uji kecepatan 2 juta event
+    python -m pipeline.producer                      # kirim semuanya
 """
 import argparse
 import time

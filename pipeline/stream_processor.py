@@ -8,8 +8,8 @@ Definisi tugas (SAMA dengan yang dievaluasi):
   - Label = 1 jika ada pembelian pada event setelah ke-K. Label diketahui setelah session selesai
     (tidak ada event baru selama TIMEOUT_MIN menit menurut WAKTU DATA).
   - Evaluasi prequential: prediksi dibuat dulu, model baru belajar dari label setelah session selesai.
-
-Menjalankan:   python spark_stream_v2.py
+  
+Menjalankan:   python -m pipeline.stream_processor
 """
 import math
 import os
