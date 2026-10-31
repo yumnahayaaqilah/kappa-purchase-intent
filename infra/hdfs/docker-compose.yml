@@ -1,0 +1,24 @@
+services:
+  namenode:
+    image: apache/hadoop:3
+    container_name: hdfs-namenode
+    hostname: namenode
+    command: ["hdfs", "namenode"]
+    ports:
+      - "9870:9870"   # web UI
+      - "8020:8020"   # RPC, dipakai Spark (fs.defaultFS)
+    env_file: ./config
+    environment:
+      ENSURE_NAMENODE_DIR: "/tmp/hadoop-root/dfs/name"
+
+  datanode:
+    image: apache/hadoop:3
+    container_name: hdfs-datanode
+    hostname: datanode
+    command: ["hdfs", "datanode"]
+    ports:
+      - "9864:9864"   # web UI
+      - "9866:9866"   # transfer data
+    env_file: ./config
+    depends_on:
+      - namenode
