@@ -12,6 +12,7 @@ Both write to PostgreSQL. The same code reads either Kafka or the HDFS data lake
     python -m pipeline.stream_processor --reset                 # fresh run from Kafka
     python -m pipeline.stream_processor                         # continue after a stop
     python -m pipeline.stream_processor --source lake --reset   # re-compute from the HDFS mirror
+    python -m pipeline.stream_processor --source lake --reset --start-offset 120714   # skip a re-sent prefix
 """
 import argparse
 import os
@@ -27,6 +28,8 @@ ap.add_argument("--checkpoint", default="checkpoint/stream_processor", help="loc
 ap.add_argument("--categories", default="ref/product_category.parquet", help="product_id -> category_top")
 ap.add_argument("--max-offsets", type=int, default=500_000, help="max Kafka events per micro-batch")
 ap.add_argument("--max-files", type=int, default=1, help="lake files per micro-batch")
+ap.add_argument("--start-offset", type=int, default=0,
+                help="ignore events before this Kafka offset (single-partition topic), e.g. an accidental re-send")
 ap.add_argument("--watermark", default="1 minute")
 ap.add_argument("--partitions", type=int, default=4, help="state partitions (parallel tasks)")
 ap.add_argument("--once", action="store_true", help="process what is available, then stop")
@@ -86,16 +89,19 @@ def read_events(spark):
         raw = (spark.readStream.format("kafka")
                .option("kafka.bootstrap.servers", args.bootstrap)
                .option("subscribe", args.topic)
-               .option("startingOffsets", "earliest")
+               .option("startingOffsets", f'{{"{args.topic}": {{"0": {args.start_offset}}}}}'
+                       if args.start_offset else "earliest")
                .option("maxOffsetsPerTrigger", args.max_offsets)
                .option("failOnDataLoss", "true")
                .load())
-        return (raw.select(F.from_json(F.col("value").cast("string"), StructType(EVENT_FIELDS)).alias("e"),
-                           F.col("offset").alias("kafka_offset"))
-                .select("e.*", "kafka_offset"))
-    return (spark.readStream.schema(LAKE_SCHEMA)
-            .option("maxFilesPerTrigger", args.max_files)
-            .parquet(args.lake))
+        events = (raw.select(F.from_json(F.col("value").cast("string"), StructType(EVENT_FIELDS)).alias("e"),
+                             F.col("offset").alias("kafka_offset"))
+                  .select("e.*", "kafka_offset"))
+    else:
+        events = (spark.readStream.schema(LAKE_SCHEMA)
+                  .option("maxFilesPerTrigger", args.max_files)
+                  .parquet(args.lake))
+    return events.where(F.col("kafka_offset") >= args.start_offset) if args.start_offset else events
 
 
 def main():
