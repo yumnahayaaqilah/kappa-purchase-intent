@@ -11,7 +11,7 @@ import pandas as pd
 from kafka import KafkaProducer
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--file", default="sample/sample_10pct.csv")
+ap.add_argument("--file", default="sample/sample_10pct_7bulan.csv")
 ap.add_argument("--topic", default="clickstream")
 ap.add_argument("--bootstrap", default="localhost:9092")
 ap.add_argument("--limit", type=int, default=0, help="0 = kirim semua")
