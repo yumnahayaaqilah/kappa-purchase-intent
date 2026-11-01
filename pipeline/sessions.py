@@ -9,22 +9,27 @@ row is emitted; when a predicted session ends, a "close" row with the label foll
 Spark keeps state per bucket of sessions (hash of user_session), not per session: the
 per-group overhead of applyInPandasWithState is high, and one Python call per bucket
 handles thousands of sessions at once.
+
+A closed user_session is remembered for good, so its later events are always ignored (some
+IDs come back weeks later). To keep that memory small, a closed ID is stored as an 8-byte
+fingerprint in a sorted array: about 72 MB for the 9 million sessions of seven months.
 """
+import hashlib
 import math
 import pickle
 
+import numpy as np
 import pandas as pd
 
 K = 3
 GAP_MIN = 30
 GAP_MS = GAP_MIN * 60 * 1000
-RETENTION_MS = 7 * 24 * 3600 * 1000      # remember a closed session for 7 days of event time
 N_BUCKETS = 256
 OPEN, CLOSED = 0, 1
 
 OUTPUT_SCHEMA = ("kind string, session_id string, t_event long, t_pred long, n_events int, "
                  "f_c double, f_avg_price double, f_max_price double, f_dur double, y int")
-STATE_SCHEMA = "blob binary"            # pickled {"open": {sid: Session tuple}, "closed": {sid: t_last}}
+STATE_SCHEMA = "open binary, gone binary"   # pickled {sid: Session tuple}; sorted uint64 fingerprints
 OUT_COLS = ["kind", "session_id", "t_event", "t_pred", "n_events",
             "f_c", "f_avg_price", "f_max_price", "f_dur", "y"]
 FEATURES = ["c", "avg_price", "max_price", "dur"]
@@ -94,14 +99,31 @@ class Session:
         self.status = CLOSED
 
 
+def fingerprint(sid):
+    return np.uint64(int.from_bytes(hashlib.blake2b(sid.encode(), digest_size=8).digest(), "big"))
+
+
 def update_bucket(key, pdfs, state):
     """Function for applyInPandasWithState, grouped by bucket (event-time timeout)."""
     if state.exists:
-        st = pickle.loads(state.get[0])
-        open_, closed = {sid: Session(v) for sid, v in st["open"].items()}, st["closed"]
+        open_blob, gone_blob = state.get
+        open_ = {sid: Session(v) for sid, v in pickle.loads(open_blob).items()}
+        gone = np.frombuffer(gone_blob, dtype=np.uint64)
     else:
-        open_, closed = {}, {}
-    out = []
+        open_, gone = {}, np.empty(0, dtype=np.uint64)
+    known_gone, new_gone, out = {}, [], []
+
+    def is_gone(sid):
+        if sid not in known_gone:
+            h = fingerprint(sid)
+            i = np.searchsorted(gone, h)
+            known_gone[sid] = bool(i < len(gone) and gone[i] == h)
+        return known_gone[sid]
+
+    def retire(sid, s):
+        del open_[sid]
+        known_gone[sid] = True
+        new_gone.append(fingerprint(sid))
 
     if not state.hasTimedOut:
         rows = []
@@ -110,30 +132,25 @@ def update_bucket(key, pdfs, state):
                             pdf["event_type"].tolist(), pdf["price"].tolist()))
         rows.sort()                                          # Kafka-offset order
         for _, sid, ts, et, price in rows:
-            if sid in closed:
-                continue
             s = open_.get(sid)
             if s is None:
+                if is_gone(sid):
+                    continue
                 s = open_[sid] = Session()
             s.add(ts, et, price, out, sid)
             if s.status == CLOSED:
-                closed[sid] = s.t_last
-                del open_[sid]
+                retire(sid, s)
 
     wm = state.getCurrentWatermarkMs()
     for sid in [sid for sid, s in open_.items() if s.t_last + GAP_MS <= wm]:   # gap already over in event time
-        s = open_.pop(sid)
-        s.close(out, sid)
-        closed[sid] = s.t_last
-    for sid in [sid for sid, t in closed.items() if t + RETENTION_MS <= wm]:
-        del closed[sid]
+        open_[sid].close(out, sid)
+        retire(sid, open_[sid])
 
-    deadlines = [s.t_last + GAP_MS for s in open_.values()] + [t + RETENTION_MS for t in closed.values()]
-    if deadlines:
-        state.update((pickle.dumps({"open": {sid: s.to_tuple() for sid, s in open_.items()}, "closed": closed},
-                                   protocol=pickle.HIGHEST_PROTOCOL),))
-        state.setTimeoutTimestamp(min(deadlines))
-    else:
-        state.remove()
+    if new_gone:
+        gone = np.union1d(gone, np.array(new_gone, dtype=np.uint64))
+    state.update((pickle.dumps({sid: s.to_tuple() for sid, s in open_.items()}, protocol=pickle.HIGHEST_PROTOCOL),
+                  gone.tobytes()))
+    if open_:
+        state.setTimeoutTimestamp(min(s.t_last for s in open_.values()) + GAP_MS)
     if out:
         yield pd.DataFrame(out, columns=OUT_COLS)
