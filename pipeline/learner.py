@@ -8,7 +8,7 @@ the batch id are committed in one transaction, so a repeated batch is skipped sa
 """
 import pickle
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
@@ -134,8 +134,9 @@ class Learner:
 
     def _update_daily(self, cur, days):
         for d in sorted(days):
+            start = datetime(d.year, d.month, d.day, tzinfo=timezone.utc)     # UTC day, whatever the server zone
             cur.execute("SELECT prob, y FROM eval_log WHERE t_pred >= %s AND t_pred < %s",
-                        (d, pd.Timestamp(d) + pd.Timedelta(days=1)))
+                        (start, start + timedelta(days=1)))
             r = cur.fetchall()
             m = day_metrics([a for a, _ in r], [b for _, b in r])
             cur.execute("""
