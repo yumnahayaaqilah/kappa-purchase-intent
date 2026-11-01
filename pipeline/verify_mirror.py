@@ -1,5 +1,7 @@
 """
-Check the mirrored data in HDFS: row count, Kafka offset continuity and duplicates, files per month.
+Check the mirrored data in HDFS: row count, Kafka offset continuity and duplicates, files per month,
+and replay order (a file-stream replay reads files by modification time, so later files must hold
+later offsets).
 
     python -m pipeline.verify_mirror
     python -m pipeline.verify_mirror --path /datalake/test/clickstream
@@ -12,8 +14,9 @@ ap.add_argument("--hdfs", default="hdfs://localhost:8020")
 ap.add_argument("--path", default="/datalake/raw/clickstream")
 args = ap.parse_args()
 
-os.environ.setdefault("HADOOP_HOME", r"C:\hadoop")
-os.environ["PATH"] += r";C:\hadoop\bin"
+if os.name == "nt":
+    os.environ.setdefault("HADOOP_HOME", r"C:\hadoop")
+    os.environ["PATH"] += r";C:\hadoop\bin"
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
@@ -46,4 +49,19 @@ for f in df.inputFiles():
     files[m] = files.get(m, 0) + 1
 for row in df.groupBy("event_month").count().orderBy("event_month").collect():
     print(f"  {row.event_month}: {row['count']:,} rows in {files.get(row.event_month, 0)} file(s)")
+
+# Replay order: files sorted by modification time must hold increasing offset ranges
+ranges = (df.groupBy(F.input_file_name().alias("file"))
+          .agg(F.min("kafka_offset").alias("lo"), F.max("kafka_offset").alias("hi")).collect())
+jvm = spark._jvm
+conf = spark._jsc.hadoopConfiguration()
+files = []
+for r in ranges:
+    path = jvm.org.apache.hadoop.fs.Path(r.file)
+    files.append((path.getFileSystem(conf).getFileStatus(path).getModificationTime(), r.file, r.lo, r.hi))
+files.sort()
+bad = [(a, b) for a, b in zip(files, files[1:]) if b[2] <= a[3]]
+print(f"\nReplay order: {len(files)} files, {len(bad)} out of order")
+for a, b in bad[:5]:
+    print(f"  {a[1].split('/')[-2:]} offsets {a[2]:,}..{a[3]:,}  then  {b[1].split('/')[-2:]} offsets {b[2]:,}..{b[3]:,}")
 spark.stop()

@@ -14,7 +14,7 @@ import time
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--bootstrap", default="localhost:9092")
-ap.add_argument("--topic", default="ecommerce-v2")
+ap.add_argument("--topic", default="clickstream")
 ap.add_argument("--hdfs", default="hdfs://localhost:8020")
 ap.add_argument("--path", default="/datalake/raw/clickstream")
 ap.add_argument("--checkpoint", default="/checkpoints/hdfs_mirror", help="path on HDFS")
