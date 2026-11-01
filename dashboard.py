@@ -1,8 +1,18 @@
-"""Dashboard pemantauan prediksi pembelian sesi (satu layar, padat). Membaca hasil pipeline dari PostgreSQL.
-Prinsip: setiap panel menjawab satu pertanyaan (pertanyaan analitik WS3 atau pemantauan pipeline), tanpa dekorasi.
-Grafik dibuat dari HTML/CSS/SVG sendiri sehingga mengisi kartu dengan tinggi tetap di semua ukuran layar."""
+"""Dashboard pemantauan prediksi pembelian sesi. Membaca hasil pipeline dari PostgreSQL.
+
+Tiga tampilan, satu pertanyaan per panel:
+  Pipeline   apakah data mengalir dan diproses (status, volume harian, sesi aktif)
+  Model      seberapa baik skor memisahkan pembeli (AUC, Precision@5%, desil, ambang, bobot model)
+  Pelanggan  perilaku apa yang menyertai pembelian (keranjang dan harga, funnel, kategori)
+Aturan warna: biru = data utama (seri 1); oranye, hijau toska, kuning = seri 2-4 hanya bila satu grafik memuat
+beberapa seri (selalu dengan legenda); abu-abu = garis acuan; hijau status hanya untuk status pipeline.
+Grafik dibuat dari HTML/CSS/SVG sendiri sehingga ukuran kartu tetap di semua layar.
+
+    streamlit run dashboard.py
+"""
 import html
 import math
+import time
 
 import numpy as np
 import pandas as pd
@@ -13,93 +23,121 @@ from db_config import DB
 
 st.set_page_config(page_title="Pemantauan Prediksi Pembelian", layout="wide", initial_sidebar_state="collapsed")
 
-BG, CARD, LINE, TXT, MUTED, SUB = "#0b1220", "#111a2e", "#1f2b45", "#e8edf7", "#8a97b3", "#c3cbe0"
-BLUE, ORANGE = "#3987e5", "#d95926"          # seri 1 dan 2 (sudah divalidasi pada permukaan gelap)
-EDGES = (4.689940164029909, 5.635253781136272)  # batas kelompok harga dari 70% awal data (evaluation/tune_from_log.py)
-H1, H2, H3 = 264, 264, 252                    # tinggi tiga baris kartu (px)
+BG, CARD, LINE, TXT, MUTED, SUB, REF = "#0b1220", "#111a2e", "#1f2b45", "#e8edf7", "#8a97b3", "#c3cbe0", "#8a97b3"
+SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500"]   # seri 1-4, lolos uji buta warna pada permukaan kartu
+BLUE, ORANGE = SERIES[0], SERIES[1]
+GOOD = "#0ca30c"                                       # status: pipeline berjalan
+WARN = "#fab219"                                       # status: anomali harian
+EDGES = (4.689940164029909, 5.635253781136272)          # batas kelompok harga dari 70% awal data (evaluation/tune_from_log.py)
+H = 350                                                # tinggi kartu (px)
+LIVE_SEC = 90                                          # dianggap berjalan bila ada hasil batch dalam 90 detik terakhir
+FEAT_NAMES = {"c": "Jumlah masuk keranjang", "avg_price": "Harga rata-rata", "max_price": "Harga tertinggi", "dur": "Durasi awal"}
+CATEGORY_NAMES = {"electronics": "Elektronik", "appliances": "Peralatan rumah tangga", "computers": "Komputer", "apparel": "Pakaian",
+                  "furniture": "Furnitur", "auto": "Otomotif", "construction": "Perkakas dan konstruksi", "kids": "Anak-anak",
+                  "sport": "Olahraga", "accessories": "Aksesori", "country_yard": "Taman dan pekarangan", "medicine": "Kesehatan",
+                  "stationery": "Alat tulis", "unknown": "Tanpa kategori"}
 
 st.markdown(f"""<style>
 .stApp{{background:{BG};color:{TXT};font-family:system-ui,-apple-system,"Segoe UI",sans-serif}}
 header[data-testid="stHeader"]{{display:none}}
 #MainMenu,footer{{visibility:hidden}}
-.block-container{{padding:.45rem .9rem .3rem .9rem!important;max-width:100%!important}}
-div[data-testid="stVerticalBlock"]{{gap:.4rem}}
+.block-container{{padding:.5rem .9rem .4rem .9rem!important;max-width:100%!important}}
+div[data-testid="stVerticalBlock"]{{gap:.45rem}}
 div[data-testid="stHorizontalBlock"]{{gap:.45rem}}
 div[data-testid="stMarkdownContainer"]{{margin-bottom:0!important}}
 div[data-testid="stMarkdownContainer"] p{{margin:0}}
-[role="tablist"]{{gap:2px;margin-bottom:-6px}}
-[role="tab"]{{height:28px;padding:0 12px;color:{MUTED}}}
-[role="tab"] p{{font-size:.82rem}}
-[role="tab"][aria-selected="true"],[role="tab"][aria-selected="true"] p{{color:{TXT}!important}}
-.react-aria-SelectionIndicator,[data-baseweb="tab-highlight"]{{background-color:{BLUE}!important}}
-[data-baseweb="tab-border"]{{background-color:{LINE}!important}}
-[role="tabpanel"]{{padding-top:.35rem}}
-.hd{{display:flex;justify-content:space-between;align-items:center;height:30px}}
+div[data-testid="stButtonGroup"] button{{min-height:30px;padding:0 14px;background:{CARD};border-color:{LINE};color:{MUTED}}}
+div[data-testid="stButtonGroup"] button[aria-checked="true"]{{background:{LINE}!important;border-color:{BLUE}!important}}
+div[data-testid="stButtonGroup"] button[aria-checked="true"] p{{color:{TXT}!important}}
+div[data-testid="stButtonGroup"] button:hover p{{color:{TXT}!important}}
+div[data-testid="stButtonGroup"] button:focus{{box-shadow:none!important}}
+div[data-testid="stButtonGroup"] button p{{font-size:.8rem}}
+.hd{{display:flex;justify-content:space-between;align-items:center;min-height:30px;gap:12px}}
 .hd b{{font-size:1.02rem;font-weight:700;color:{TXT}}}
-.hd span.s{{color:{MUTED};font-size:.78rem;margin-left:10px}}
-.live{{display:flex;align-items:center;gap:8px;font-size:.78rem;color:{SUB}}}
-.dot{{width:8px;height:8px;border-radius:50%;background:{BLUE};animation:pl 1.8s infinite}}
-@keyframes pl{{0%{{box-shadow:0 0 0 0 rgba(57,135,229,.6)}}100%{{box-shadow:0 0 0 8px rgba(57,135,229,0)}}}}
-.card{{background:{CARD};border:1px solid {LINE};border-radius:8px;padding:8px 10px 6px 10px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden}}
-.ch b{{display:block;font-size:.8rem;font-weight:600;color:{TXT};line-height:1.2}}
-.ch b .i{{display:inline !important;margin-top:0 !important;color:#6b7893;font-weight:400;font-size:.72rem;margin-left:3px;cursor:help}}
-.ch span{{display:block;font-size:.66rem;color:{MUTED};line-height:1.25;margin-top:1px}}
-.cb{{flex:1;min-height:0;position:relative;margin-top:4px}}
-.kpi{{flex-direction:row;align-items:center;justify-content:space-between;gap:8px;height:70px}}
+.hd span.s{{color:{MUTED};font-size:.76rem;margin-left:10px}}
+.fresh{{display:flex;align-items:center;gap:8px;font-size:.76rem;color:{SUB};white-space:nowrap}}
+.dot{{width:8px;height:8px;border-radius:50%;flex:none}}
+.dot.on{{background:{GOOD};animation:pl 1.8s infinite}}
+.dot.off{{background:none;border:1.5px solid {MUTED}}}
+@keyframes pl{{0%{{box-shadow:0 0 0 0 rgba(12,163,12,.55)}}100%{{box-shadow:0 0 0 7px rgba(12,163,12,0)}}}}
+.card{{position:relative;background:{CARD};border:1px solid {LINE};border-radius:8px;padding:9px 11px 7px 11px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden}}
+.i{{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1px solid #3a4866;color:{SUB};font:700 .6rem/1 system-ui,sans-serif;margin-left:7px;cursor:pointer;vertical-align:1px;outline:none;user-select:none;text-transform:none;letter-spacing:0}}
+.i:hover,.i:focus{{border-color:{BLUE};color:{TXT};background:rgba(57,135,229,.18)}}
+.tip{{display:none;position:absolute;left:10px;right:10px;top:30px;z-index:30;background:#18233b;border:1px solid #2c3b5c;border-radius:6px;padding:9px 11px;font-size:.72rem;line-height:1.5;color:{TXT};box-shadow:0 10px 28px rgba(0,0,0,.45)}}
+.tip p{{margin:0 0 5px 0!important}}
+.tip p:last-child{{margin-bottom:0!important}}
+.card:has(.i:hover) .tip,.card:has(.i:focus) .tip{{display:block}}
+.kpi .tip{{top:calc(100% + 6px);left:0;right:auto;width:300px}}
+.fl{{position:absolute;width:9px;height:9px;border-radius:50%;border:2px solid {WARN};background:{CARD};transform:translate(-50%,-50%);z-index:5}}
+.ch b{{display:block;font-size:.82rem;font-weight:600;color:{TXT};line-height:1.25}}
+.ch > span{{display:block;font-size:.68rem;color:{MUTED};line-height:1.3;margin-top:1px}}
+.lg{{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px;font-size:.66rem;color:{SUB}}}
+.lg i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}}
+.lg i.c{{border-radius:50%;width:9px;height:9px}}
+.lg i.r{{height:0;border-top:1px solid {REF};border-radius:0;vertical-align:3px;width:14px}}
+.lg i.o{{width:7px;height:7px;border-radius:50%;border:2px solid {WARN};background:none}}
+.tag{{display:inline-block;margin-left:8px;padding:0 7px;border-radius:999px;border:1px solid {BLUE};font-size:.6rem;font-weight:600;color:{TXT};vertical-align:1px}}
+.cb{{flex:1;min-height:0;position:relative;margin-top:6px}}
+.ft{{font-size:.64rem;color:{MUTED};margin-top:4px;line-height:1.3}}
+.kpi{{flex-direction:row;align-items:center;justify-content:space-between;gap:8px;height:72px;overflow:visible}}
 .kpi .l{{font-size:.62rem;letter-spacing:.05em;color:{MUTED};text-transform:uppercase}}
 .kpi .v{{font-size:1.45rem;font-weight:700;color:{TXT};line-height:1.15}}
 .kpi .d{{font-size:.64rem;color:{MUTED};line-height:1.2}}
-.kpi svg{{width:78px;height:34px;flex:none}}
-.kpi svg polyline{{vector-effect:non-scaling-stroke}}
-.lc{{position:absolute;left:34px;right:6px;top:4px;bottom:16px}}
+.kpi svg{{width:80px;height:34px;flex:none}}
+.kpi svg polyline,.lc svg polyline{{vector-effect:non-scaling-stroke}}
+.lc{{position:absolute;left:38px;right:8px;top:6px;bottom:18px}}
 .lc .gl{{position:absolute;left:0;right:0;height:1px;background:{LINE}}}
-.lc .yl{{position:absolute;right:100%;margin-right:5px;transform:translateY(-50%);font-size:.62rem;color:{MUTED};white-space:nowrap}}
-.lc .xl{{position:absolute;top:100%;margin-top:3px;font-size:.62rem;color:{MUTED};white-space:nowrap}}
+.lc .yl{{position:absolute;right:100%;margin-right:6px;transform:translateY(-50%);font-size:.62rem;color:{MUTED};white-space:nowrap}}
+.lc .xl{{position:absolute;top:100%;margin-top:4px;font-size:.62rem;color:{MUTED};white-space:nowrap}}
 .lc svg{{position:absolute;inset:0;width:100%;height:100%;overflow:visible}}
-.lc svg polyline{{vector-effect:non-scaling-stroke}}
-.lc .rf{{position:absolute;left:0;right:0;height:1px;background:{ORANGE}}}
-.lc .rt{{position:absolute;left:4px;transform:translateY(-120%);font-size:.62rem;color:{SUB};white-space:nowrap;background:{CARD};padding:0 3px;border-radius:3px;z-index:3}}
-.lc .ev{{position:absolute;width:7px;height:7px;border-radius:50%;background:{BLUE};transform:translate(-50%,-50%);box-shadow:0 0 0 2px {CARD}}}
-.lc .et{{position:absolute;transform:translate(-100%,-160%);font-size:.7rem;font-weight:600;color:{TXT};white-space:nowrap;background:{CARD};padding:0 3px;border-radius:3px;z-index:3}}
-.lc .hc{{position:absolute;top:0;bottom:0}}
-.lc .hc:hover{{background:rgba(57,135,229,.12)}}
+.rf{{position:absolute;left:0;right:0;height:0;border-top:1px solid {REF};z-index:1}}
+.rt{{position:absolute;font-size:.62rem;color:{SUB};white-space:nowrap;background:{CARD};padding:0 4px;border-radius:3px;z-index:3;transform:translateY(-115%)}}
+.ev{{position:absolute;width:8px;height:8px;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 2px {CARD};z-index:2}}
+.et{{position:absolute;transform:translate(-100%,-165%);font-size:.7rem;font-weight:600;color:{TXT};white-space:nowrap;background:{CARD};padding:0 3px;border-radius:3px;z-index:3}}
+.hc{{position:absolute;top:0;bottom:0;z-index:4}}
+.hc:hover{{background:rgba(138,151,179,.10)}}
+.sm{{position:relative;height:calc(50% - 8px);margin-bottom:16px}}
+.sm .t{{position:absolute;top:-2px;left:0;font-size:.66rem;color:{SUB}}}
+.sm .lc{{top:24px}}
 .bv{{position:absolute;inset:0;display:flex;flex-direction:column}}
-.bp{{flex:1;position:relative;display:flex;align-items:flex-end;gap:5px;border-bottom:1px solid {LINE}}}
-.bp .rf{{position:absolute;left:0;right:0;height:1px;background:{ORANGE};z-index:2}}
-.bp .rt{{position:absolute;transform:translateY(-120%);font-size:.62rem;color:{SUB};white-space:nowrap;z-index:3;background:{CARD};padding:0 3px;border-radius:3px}}
-.bc{{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:0}}
-.bc .bv2{{font-size:.68rem;color:{TXT};margin-bottom:2px;font-weight:600;position:relative;z-index:3;background:{CARD};padding:0 3px;border-radius:3px}}
-.bc .bar{{width:72%;background:{BLUE};border-radius:3px 3px 0 0;min-height:1px}}
-.bx{{display:flex;gap:5px;padding-top:3px}}
+.bp{{flex:1;position:relative;display:flex;gap:4px;border-bottom:1px solid {LINE}}}
+.bc{{flex:1;position:relative;min-width:0}}
+.bc .bar{{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:min(24px,72%);background:{BLUE};border-radius:4px 4px 0 0;min-height:1px}}
+.bc .bt{{position:absolute;left:50%;transform:translateX(-50%);font-size:.66rem;font-weight:600;color:{TXT};white-space:nowrap;margin-bottom:3px;z-index:3}}
+.bc .mk{{position:absolute;left:50%;width:9px;height:9px;border-radius:50%;background:{ORANGE};transform:translate(-50%,50%);box-shadow:0 0 0 2px {CARD};z-index:2}}
+.bc .hit{{position:absolute;inset:0;z-index:4}}
+.bc .hit:hover{{background:rgba(138,151,179,.10)}}
+.bx{{display:flex;gap:4px;padding-top:4px}}
 .bx div{{flex:1;text-align:center;font-size:.62rem;color:{MUTED};line-height:1.2;min-width:0}}
-.bx div i{{display:block;font-style:normal;color:#6b7893;font-size:.58rem}}
+.ax{{display:flex;justify-content:space-between;font-size:.6rem;color:#6b7893;padding-top:2px}}
 .hm{{display:grid;gap:2px;align-items:stretch}}
-.hm .c{{border-radius:3px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:.8rem;font-weight:600;line-height:1.1}}
-.hm .c i{{font-style:normal;font-weight:400;font-size:.56rem;opacity:.85}}
-.hm .l{{font-size:.62rem;color:{MUTED};display:flex;align-items:center;justify-content:flex-end;padding-right:5px;text-align:right;line-height:1.1}}
-.hm .t{{font-size:.62rem;color:{MUTED};text-align:center;line-height:1.1;padding-bottom:2px}}
-table.tb{{width:100%;border-collapse:collapse;font-size:.74rem}}
-table.tb th{{text-align:right;color:{MUTED};font-weight:500;padding:2px 5px;border-bottom:1px solid {LINE};font-size:.64rem}}
+.hm .c{{border-radius:3px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:.82rem;font-weight:600;line-height:1.15}}
+.hm .c i{{font-style:normal;font-weight:400;font-size:.6rem;opacity:.85}}
+.hm .l{{font-size:.64rem;color:{MUTED};display:flex;align-items:center;justify-content:flex-end;padding-right:6px;text-align:right;line-height:1.15}}
+.hm .t{{font-size:.62rem;color:{MUTED};text-align:center;line-height:1.15;padding-bottom:3px}}
+table.tb{{width:100%;border-collapse:collapse;font-size:.74rem;font-variant-numeric:tabular-nums}}
+table.tb th{{text-align:right;color:{MUTED};font-weight:500;padding:3px 6px;border-bottom:1px solid {LINE};font-size:.64rem}}
 table.tb th:first-child,table.tb td:first-child{{text-align:left}}
-table.tb td{{text-align:right;padding:4px 5px;border-bottom:1px solid #16213a;color:{TXT}}}
+table.tb td{{text-align:right;padding:5px 6px;border-bottom:1px solid #16213a;color:{TXT}}}
 table.tb tr.best td{{font-weight:700;background:rgba(57,135,229,.10)}}
-.mono{{font-family:ui-monospace,Consolas,monospace;font-size:.68rem;color:{MUTED}}}
+table.tb tr.rule td{{color:{SUB};border-top:1px solid {LINE}}}
+.mono{{font-family:ui-monospace,Consolas,monospace;font-size:.7rem;color:{SUB}}}
 .pill{{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.64rem;font-weight:600}}
 .p-hi{{background:{BLUE};color:#fff}}
 .p-md{{border:1px solid {BLUE};color:{TXT}}}
 .p-lo{{border:1px solid {LINE};color:{MUTED}}}
-.hb{{margin:3px 0}}
-.hb .t{{display:flex;justify-content:space-between;font-size:.72rem;color:{TXT};margin-bottom:2px}}
-.hb .t span{{color:{MUTED};font-size:.66rem}}
-.hb .k{{height:6px;background:#18233d;border-radius:3px;overflow:hidden}}
-.hb .k div{{height:100%;background:{BLUE};border-radius:3px}}
-.fi{{font-size:.74rem;line-height:1.35;color:{TXT};margin:5px 0}}
-.fi b{{font-weight:700}}
-.note{{font-size:.64rem;color:{MUTED};margin-top:3px;line-height:1.25}}
-.big{{font-size:.8rem;color:{SUB};line-height:1.5}}
-.big b{{color:{TXT}}}
-.gl2{{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;font-size:.78rem;color:{MUTED};line-height:1.45}}
-.gl2 b{{color:{TXT}}}
+.hb{{margin:4px 0 6px 0}}
+.hb .t{{display:flex;justify-content:space-between;font-size:.74rem;color:{TXT};margin-bottom:3px;gap:8px}}
+.hb .t span{{color:{MUTED};font-size:.68rem;white-space:nowrap}}
+.hb .k{{height:8px;background:#18233d;border-radius:4px;overflow:hidden}}
+.hb .k div{{height:100%;background:{BLUE};border-radius:4px}}
+.grp{{font-size:.64rem;color:{MUTED};text-transform:uppercase;letter-spacing:.05em;margin:2px 0 2px 0}}
+.st{{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;height:100%}}
+.st div{{border:1px solid {LINE};border-radius:6px;padding:7px 9px;display:flex;flex-direction:column;justify-content:center;min-width:0}}
+.st .l{{font-size:.6rem;letter-spacing:.05em;color:{MUTED};text-transform:uppercase}}
+.st .v{{font-size:1.05rem;font-weight:700;color:{TXT};line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.st .d{{font-size:.62rem;color:{MUTED};line-height:1.2}}
+.note{{font-size:.72rem;color:{MUTED};line-height:1.35}}
 </style>""", unsafe_allow_html=True)
 
 BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
@@ -115,11 +153,14 @@ def dec(x, d=1):
 
 
 def short(n):
+    """Angka ringkas: 950 / 7,2 ribu / 105 ribu / 3,7 juta."""
     n = float(n)
     if n >= 1e6:
-        return f"{dec(n / 1e6, 1)} jt"
+        return f"{dec(n / 1e6, 1)} juta"
+    if n >= 1e4:
+        return f"{dec(n / 1e3, 0)} ribu"
     if n >= 1e3:
-        return f"{dec(n / 1e3, 0)} rb"
+        return f"{dec(n / 1e3, 1)} ribu"
     return idn(n)
 
 
@@ -128,7 +169,31 @@ def pc(x, d=1):
 
 
 def tgl(d):
-    return f"{d.day} {BULAN[d.month - 1]} {str(d.year)[2:]}"
+    return f"{d.day} {BULAN[d.month - 1]} {d.year}"
+
+
+def utc(ts):
+    ts = pd.Timestamp(ts)
+    return ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+
+
+def waktu(ts):
+    ts = utc(ts)
+    return f"{ts.day} {BULAN[ts.month - 1]} {ts.year} {ts:%H:%M}"
+
+
+def nz(x):
+    return 0 if x is None or pd.isna(x) else x
+
+
+def lalu(sec):
+    if sec < 60:
+        return f"{int(sec)} detik lalu"
+    if sec < 3600:
+        return f"{int(sec // 60)} menit lalu"
+    if sec < 86400:
+        return f"{int(sec // 3600)} jam lalu"
+    return f"{int(sec // 86400)} hari lalu"
 
 
 # ------------------------------------------------------------------ data
@@ -147,13 +212,13 @@ def q(sql):
     return df
 
 
-@st.cache_data(ttl=45, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def q_slow(sql):
     return q(sql)
 
 
 def ramp(t):
-    """Satu hue (biru), gelap ke terang. t 0..1."""
+    """Satu hue (biru), gelap = sedikit, terang = banyak. t 0..1."""
     stops = [(0, (26, 44, 76)), (.55, (42, 120, 214)), (1, (158, 197, 244))]
     t = min(max(t, 0), 1)
     for (a, ca), (b, cb) in zip(stops, stops[1:]):
@@ -164,10 +229,27 @@ def ramp(t):
 
 
 # ------------------------------------------------------------------ komponen
-def card(title, sub, body, h, extra="", tip=""):
-    t = (f'<b title="{html.escape(tip)}">{title} <span class="i">&#9432;</span></b>' if tip else f"<b>{title}</b>")
-    return (f'<div class="card" style="height:{h}px"><div class="ch">{t}<span>{sub}</span></div>'
-            f'<div class="cb">{body}</div>{extra}</div>')
+def info(tip):
+    """Ikon informasi; penjelasan tampil saat ikon diarahkan atau diklik."""
+    if not tip:
+        return "", ""
+    body = "".join(f"<p>{t}</p>" for t in (tip if isinstance(tip, (list, tuple)) else [tip]))
+    return '<span class="i" tabindex="0" role="button" aria-label="Informasi">i</span>', f'<div class="tip">{body}</div>'
+
+
+def card(title, sub, body, h=H, legend="", tip=""):
+    icon, box = info(tip)
+    return (f'<div class="card" style="height:{h}px"><div class="ch"><b>{title}{icon}</b><span>{sub}</span>{legend}</div>'
+            f'<div class="cb">{body}</div>{box}</div>')
+
+
+def legend(items):
+    """items: (label, color, kind) dengan kind 'b' kotak, 'c' titik, 'r' garis acuan."""
+    out = []
+    for lab, col, kind in items:
+        style = "" if kind in ("r", "o") else f' style="background:{col}"'
+        out.append(f'<span><i class="{kind}"{style}></i>{lab}</span>')
+    return f'<div class="lg">{"".join(out)}</div>'
 
 
 def kpi(label, value, sub, vals=None, tip=""):
@@ -179,12 +261,31 @@ def kpi(label, value, sub, vals=None, tip=""):
         pts = " ".join(f"{i * 100 / (len(v) - 1):.1f},{92 - (x - lo) / rng * 84:.1f}" for i, x in enumerate(v))
         sp = (f'<svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline fill="none" stroke="{BLUE}" '
               f'stroke-width="1.6" stroke-linejoin="round" points="{pts}"/></svg>')
-    return (f'<div class="card kpi" title="{html.escape(tip)}"><div><div class="l">{label}</div><div class="v">{value}</div>'
-            f'<div class="d">{sub}</div></div>{sp}</div>')
+    icon, box = info(tip)
+    return (f'<div class="card kpi"><div><div class="l">{label}{icon}</div><div class="v">{value}</div>'
+            f'<div class="d">{sub}</div></div>{sp}{box}</div>')
 
 
-def line_html(days, vals, lo, hi, fmt, ref=None, ref_label="", ticks=4, tip=None):
-    n = len(vals)
+def nice_range(lo, hi, ticks=4):
+    """Batas sumbu dan jumlah tick dengan langkah bulat (1, 2, 2,5, 5 x 10^k), sedekat mungkin dengan data."""
+    span = (hi - lo) or abs(hi) or 1
+    best = None
+    for n in range(max(ticks - 1, 2), ticks + 3):
+        mag = 10 ** math.floor(math.log10(span / n))
+        for m in (1, 2, 2.5, 5, 10):
+            step = m * mag
+            a, b = math.floor(lo / step + 1e-9) * step, math.ceil(hi / step - 1e-9) * step
+            k = round((b - a) / step)
+            if max(ticks - 1, 2) <= k <= ticks + 2:
+                waste = (b - a) - (hi - lo)
+                if best is None or waste < best[0] - 1e-12:
+                    best = (waste, a, b, k)
+    return (best[1], best[2], best[3]) if best else (lo, hi, ticks)
+
+
+def line_chart(xlab, series, lo, hi, ticks=4, fmt=str, ref=None, ref_label="", end_label=True, flags=None):
+    """xlab: label tiap titik x. series: [(nama, nilai, warna)]. Satu sumbu y untuk semua seri."""
+    n = len(xlab)
     if n < 2:
         return '<div class="note">Belum cukup data.</div>'
     X = lambda i: i * 100 / (n - 1)
@@ -194,49 +295,80 @@ def line_html(days, vals, lo, hi, fmt, ref=None, ref_label="", ticks=4, tip=None
         v = lo + (hi - lo) * k / ticks
         out.append(f'<div class="gl" style="top:{Y(v):.1f}%"></div><div class="yl" style="top:{Y(v):.1f}%">{fmt(v)}</div>')
     for i in sorted({0, (n - 1) // 3, 2 * (n - 1) // 3, n - 1}):
-        al = "left:0" if i == 0 else (f"right:0" if i == n - 1 else f"left:{X(i):.1f}%;transform:translateX(-50%)")
-        out.append(f'<div class="xl" style="{al}">{tgl(days[i])}</div>')
+        al = "left:0" if i == 0 else ("right:0" if i == n - 1 else f"left:{X(i):.1f}%;transform:translateX(-50%)")
+        out.append(f'<div class="xl" style="{al}">{xlab[i]}</div>')
     if ref is not None:
-        out.append(f'<div class="rf" style="top:{Y(ref):.1f}%"></div><div class="rt" style="top:{Y(ref):.1f}%">{ref_label}</div>')
-    pts = " ".join(f"{X(i):.2f},{Y(v):.2f}" for i, v in enumerate(vals) if v == v)
-    out.append(f'<svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline fill="none" stroke="{BLUE}" '
-               f'stroke-width="1.8" stroke-linejoin="round" points="{pts}"/></svg>')
-    last = n - 1
-    while last > 0 and vals[last] != vals[last]:
-        last -= 1
-    out.append(f'<div class="ev" style="left:{X(last):.1f}%;top:{Y(vals[last]):.1f}%"></div>'
-               f'<div class="et" style="left:{X(last):.1f}%;top:{Y(vals[last]):.1f}%">{fmt(vals[last])}</div>')
-    for i, v in enumerate(vals):
+        out.append(f'<div class="rf" style="top:{Y(ref):.1f}%"></div>'
+                   f'<div class="rt" style="top:{Y(ref):.1f}%;left:4px">{ref_label}</div>')
+    svg = ['<svg viewBox="0 0 100 100" preserveAspectRatio="none">']
+    for _, vals, col in series:
+        run = []
+        for i, v in enumerate(list(vals) + [float("nan")]):
+            if v == v:
+                run.append(f"{X(i):.2f},{Y(v):.2f}")
+            elif run:
+                svg.append(f'<polyline fill="none" stroke="{col}" stroke-width="2" stroke-linejoin="round" '
+                           f'stroke-linecap="round" points="{" ".join(run)}"/>')
+                run = []
+    out.append("".join(svg) + "</svg>")
+    for _, vals, col in series:
+        last = max((i for i, v in enumerate(vals) if v == v), default=None)
+        if last is None:
+            continue
+        out.append(f'<div class="ev" style="left:{X(last):.1f}%;top:{Y(vals[last]):.1f}%;background:{col}"></div>')
+        if end_label and len(series) == 1:
+            out.append(f'<div class="et" style="left:{X(last):.1f}%;top:{Y(vals[last]):.1f}%">{fmt(vals[last])}</div>')
+    for i, why in (flags or []):                   # penanda anomali pada seri pertama
+        v = series[0][1][i]
         if v == v:
-            t = html.escape(tip(i) if tip else f"{tgl(days[i])}: {fmt(v)}")
+            out.append(f'<div class="fl" style="left:{X(i):.2f}%;top:{Y(v):.2f}%"></div>')
+    for i in range(n):
+        parts = [f"{nm}: {fmt(v[i])}" for nm, v, _ in series if v[i] == v[i]]
+        parts += [why for j, why in (flags or []) if j == i]
+        if parts:
+            t = html.escape(f"{xlab[i]}  " + " | ".join(parts))
             out.append(f'<i class="hc" style="left:{i * 100 / n:.2f}%;width:{100 / n:.2f}%" title="{t}"></i>')
     out.append("</div>")
     return "".join(out)
 
 
-def bars_v(values, labels, fmt, base=None, base_label="", ymax=None, subs=None, label_ends=False, tips=None):
-    ymax = ymax or max(list(values) + ([base] if base else []) + [1e-9]) * 1.18
+def bars_v(values, labels, fmt, ref=None, ref_label="", markers=None, label_idx=None, tips=None, axis_note=None):
+    """Kolom satu seri (biru); `markers` = titik seri kedua (oranye) pada skala yang sama; `ref` = garis acuan abu-abu."""
+    top = max(list(values) + list(markers or []) + ([ref] if ref else []) + [1e-9]) * 1.2
+    label_idx = range(len(values)) if label_idx is None else label_idx
     out = ['<div class="bv"><div class="bp">']
-    if base is not None:
-        side = "left:2px" if values[0] < base else "right:2px"
-        out.append(f'<div class="rf" style="bottom:{base / ymax * 100:.1f}%"></div>'
-                   f'<div class="rt" style="bottom:{base / ymax * 100:.1f}%;{side}">{base_label}</div>')
+    if ref is not None:
+        out.append(f'<div class="rf" style="top:{100 - ref / top * 100:.1f}%"></div>'
+                   f'<div class="rt" style="top:{100 - ref / top * 100:.1f}%;left:2px">{ref_label}</div>')
     for i, v in enumerate(values):
-        show = (not label_ends) or i in (0, len(values) - 1)
-        t = html.escape(tips[i] if tips else f"{labels[i]}: {fmt(v)}")
-        out.append(f'<div class="bc" title="{t}"><div class="bv2">{fmt(v) if show else "&nbsp;"}</div>'
-                   f'<div class="bar" style="height:calc({v / ymax * 100:.1f}% - 16px)"></div></div>')
-    out.append('</div><div class="bx">')
-    for i, lab in enumerate(labels):
-        out.append(f'<div>{lab}' + (f'<i>{subs[i]}</i>' if subs else "") + "</div>")
-    out.append("</div></div>")
+        h_ = v / top * 100
+        out.append('<div class="bc">'
+                   f'<div class="bar" style="height:{h_:.1f}%"></div>'
+                   + (f'<div class="bt" style="bottom:calc({max(h_, markers[i] / top * 100 if markers else 0):.1f}% + 6px)">{fmt(v)}</div>'
+                      if i in label_idx else "")
+                   + (f'<div class="mk" style="bottom:{markers[i] / top * 100:.1f}%"></div>' if markers else "")
+                   + f'<div class="hit" title="{html.escape(tips[i] if tips else f"{labels[i]}: {fmt(v)}")}"></div></div>')
+    out.append('</div><div class="bx">' + "".join(f"<div>{lab}</div>" for lab in labels) + "</div>")
+    if axis_note:
+        out.append(f'<div class="ax"><span>{axis_note[0]}</span><span>{axis_note[1]}</span></div>')
+    out.append("</div>")
     return "".join(out)
 
 
-def heat(rows, cols, cell, ncol_first=62):
+def contrast(a, b):
+    """Rasio kontras WCAG antara dua warna RGB."""
+    def lum(c):
+        c = [x / 255 for x in c]
+        c = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    la, lb = sorted((lum(a), lum(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+def heat(rows, cols, cell, first_col=58, corner=""):
     """cell(r, c) -> (nilai 0..1 untuk warna, teks besar, teks kecil, tooltip) atau None."""
-    out = [f'<div class="hm" style="grid-template-columns:{ncol_first}px repeat({len(cols)},1fr);height:100%;'
-           f'grid-template-rows:auto repeat({len(rows)},1fr)"><div></div>']
+    out = [f'<div class="hm" style="grid-template-columns:{first_col}px repeat({len(cols)},1fr);height:100%;'
+           f'grid-template-rows:auto repeat({len(rows)},1fr)"><div class="l" style="align-items:flex-end">{corner}</div>']
     out += [f'<div class="t">{c}</div>' for c in cols]
     for r in rows:
         out.append(f'<div class="l">{r}</div>')
@@ -247,7 +379,7 @@ def heat(rows, cols, cell, ncol_first=62):
                 continue
             t, big, small, tip = x
             rgb = ramp(t)
-            fg = "#0b1220" if t > .72 else "#fff"
+            fg = BG if contrast(rgb, (11, 18, 32)) > contrast(rgb, (255, 255, 255)) else "#fff"
             out.append(f'<div class="c" title="{html.escape(tip)}" style="background:rgb{rgb};color:{fg}">{big}'
                        + (f"<i>{small}</i>" if small else "") + "</div>")
     out.append("</div>")
@@ -255,193 +387,117 @@ def heat(rows, cols, cell, ncol_first=62):
 
 
 def hbars(items, fmt, maxv=None):
+    """items: (label, nilai, keterangan)."""
     maxv = maxv or max([i[1] for i in items] + [1e-9])
     return "".join(
-        f'<div class="hb"><div class="t"><span style="color:{TXT};font-size:.72rem">{html.escape(str(a))}</span>'
-        f'<span>{fmt(b)} {m}</span></div><div class="k"><div style="width:{max(1.5, b / maxv * 100):.1f}%"></div></div></div>'
+        f'<div class="hb"><div class="t"><span style="color:{TXT};font-size:.74rem">{html.escape(str(a))}</span>'
+        f'<span>{fmt(b)}{" &middot; " + m if m else ""}</span></div>'
+        f'<div class="k"><div style="width:{max(1.5, b / maxv * 100):.1f}%"></div></div></div>'
         for a, b, m in items)
 
 
-# ------------------------------------------------------------------ perhitungan dari histogram skor
+def tiles(items):
+    """items: (label, nilai, keterangan)."""
+    return '<div class="st">' + "".join(
+        f'<div><span class="l">{a}</span><span class="v" title="{html.escape(str(b))}">{b}</span><span class="d">{c}</span></div>'
+        for a, b, c in items) + "</div>"
+
+
+# ------------------------------------------------------------------ skor: histogram -> precision/recall, desil, kalibrasi
 class Hist:
     """Histogram skor (2000 kelompok) -> precision/recall pada 'tandai X% sesi teratas', desil, dan ambang skor."""
     W = 2000
 
     def __init__(self, h):
-        h = h.sort_values("b")
-        self.n = h["n"].to_numpy(float)[::-1]
-        self.buy = h["buy"].to_numpy(float)[::-1]
-        self.bins = h["b"].to_numpy(float)[::-1]
-        self.cn, self.cb = np.cumsum(self.n), np.cumsum(self.buy)
+        h = h.sort_values("b", ascending=False)
+        self.n, self.buy, self.ps = (h[c].to_numpy(float) for c in ("n", "buy", "ps"))
+        self.bins = h["b"].to_numpy(float)
+        self.cn, self.cb, self.cp = np.cumsum(self.n), np.cumsum(self.buy), np.cumsum(self.ps)
         self.N, self.B = float(self.cn[-1]), float(self.cb[-1])
 
     def top(self, share):
-        """(jumlah sesi, jumlah pembeli) pada `share` teratas menurut skor (interpolasi dalam kelompok)."""
-        share = min(max(share, 0.0), 1.0)
-        tgt = share * self.N
+        """(sesi, pembeli, jumlah skor) pada `share` teratas menurut skor, interpolasi di dalam kelompok."""
+        tgt = min(max(share, 0.0), 1.0) * self.N
         i = min(int(np.searchsorted(self.cn, tgt)), len(self.cn) - 1)
-        pn = self.cn[i - 1] if i > 0 else 0.0
-        pb = self.cb[i - 1] if i > 0 else 0.0
-        fr = (tgt - pn) / self.n[i] if self.n[i] > 0 else 0.0
-        return tgt, pb + min(max(fr, 0), 1) * self.buy[i]
+        pn, pb, pp = (a[i - 1] if i > 0 else 0.0 for a in (self.cn, self.cb, self.cp))
+        fr = min(max((tgt - pn) / self.n[i], 0), 1) if self.n[i] > 0 else 0.0
+        return tgt, pb + fr * self.buy[i], pp + fr * self.ps[i]
 
     def score_at(self, share):
         i = min(int(np.searchsorted(self.cn, share * self.N)), len(self.cn) - 1)
         return self.bins[i] / self.W
 
     def ops(self, share):
-        n, b = self.top(share)
+        n, b, _ = self.top(share)
         prec = b / n if n else 0.0
         rec = b / self.B if self.B else 0.0
-        f1 = 2 * prec * rec / (prec + rec) if prec + rec else 0.0
-        return prec, rec, f1
+        return prec, rec, (2 * prec * rec / (prec + rec) if prec + rec else 0.0)
 
     def deciles(self):
-        """Tingkat beli per desil, dari skor terendah (1) ke tertinggi (10)."""
+        """(tingkat beli nyata, rata-rata skor) per desil, dari skor terendah (1) ke tertinggi (10)."""
         out = []
         for d in range(1, 11):
-            lo_share, hi_share = (10 - d) / 10, (11 - d) / 10
-            n1, b1 = self.top(lo_share)
-            n2, b2 = self.top(hi_share)
-            out.append((b2 - b1) / (n2 - n1) if n2 > n1 else 0.0)
+            n1, b1, p1 = self.top((10 - d) / 10)
+            n2, b2, p2 = self.top((11 - d) / 10)
+            out.append(((b2 - b1) / (n2 - n1), (p2 - p1) / (n2 - n1)) if n2 > n1 else (0.0, 0.0))
         return out
 
 
-# ------------------------------------------------------------------ halaman
-@st.fragment(run_every=3)
-def live():
-    s = q("SELECT * FROM pipeline_stats WHERE id = 1")
-    if s.empty:
-        st.info("Belum ada data. Jalankan python -m pipeline.stream_processor lalu python -m pipeline.producer.")
-        return
-    s = s.iloc[0]
-    until = pd.Timestamp(s.last_event_time).tz_convert("UTC").strftime("%d %b %Y %H:%M") if s.last_event_time is not None else "-"
+def f1_of(p, r):
+    return 2 * p * r / (p + r) if p + r else 0.0
 
-    met = q("SELECT day, n, pos_rate, auc, pr_auc, p_at_5 FROM metrics_daily ORDER BY day")
-    met["day"] = pd.to_datetime(met["day"])
-    if len(met) > 3 and met.n.iloc[-1] < 0.5 * met.n.median():
-        met = met.iloc[:-1]  # hari terakhir biasanya belum penuh
-    ok = met.dropna(subset=["auc"])
-    wavg = lambda col: float((ok[col] * ok.n).sum() / ok.n.sum()) if len(ok) else float("nan")
-    w_auc, w_p5 = wavg("auc"), wavg("p_at_5")
-    hist_df = q_slow("SELECT floor(prob * 2000)::int AS b, count(*) AS n, sum(y)::float AS buy FROM eval_log GROUP BY 1 ORDER BY 1")
-    act = int(q("SELECT count(*) AS n FROM session_state WHERE predicted AND NOT closed").iloc[0].n)
 
-    st.markdown(
-        f'<div class="hd"><div><b>Pemantauan Prediksi Pembelian Sesi</b>'
-        f'<span class="s">Kafka &middot; Spark Structured Streaming &middot; River &middot; PostgreSQL</span></div>'
-        f'<div class="live"><span class="dot"></span>Data hingga {until} UTC &middot; {idn(s.batches)} batch</div></div>',
-        unsafe_allow_html=True)
+def unusual_days(met):
+    """Anomali harian: tingkat pembelian 0%, atau volume/tingkat pembelian < 0,3x atau > 2x median.
+    Hasil: penanda per grafik {'n': [(posisi, alasan)], 'r': [...]} dan teks ringkas (hari berurutan digabung)."""
+    mn, mr = met.n.median(), met.pos_rate.median()
+    marks, found = {"n": [], "r": []}, []
+    for pos, r in enumerate(met.itertuples()):
+        for chart, why in (("n", "volume tinggi" if r.n > 2 * mn else "volume rendah" if r.n < 0.3 * mn else None),
+                           ("r", "tingkat pembelian 0%" if r.pos_rate == 0 else "tingkat pembelian tinggi" if r.pos_rate > 2 * mr
+                            else "tingkat pembelian rendah" if r.pos_rate < 0.3 * mr else None)):
+            if why:
+                marks[chart].append((pos, f"Anomali: {why}"))
+                found.append((pd.Timestamp(r.day), why))
+    groups = []
+    for d, why in sorted(found, key=lambda x: (x[1], x[0])):
+        if groups and groups[-1][2] == why and (d - groups[-1][1]).days == 1:
+            groups[-1][1] = d
+        else:
+            groups.append([d, d, why])
+    groups.sort(key=lambda g: g[0])
+    text = [f"{tgl(a)} ({why})" if a == b else
+            f"{a.day}{'' if a.month == b.month else ' ' + BULAN[a.month - 1]}-{tgl(b)} ({why})" for a, b, why in groups]
+    return marks, text
 
-    if hist_df.empty:
-        st.info("Menunggu sesi pertama selesai (30 menit menurut waktu data).")
-        return
-    H = Hist(hist_df)
-    base = H.B / H.N
-    n_sess, n_buy = int(H.N), int(H.B)
-    t5, t20 = H.score_at(0.05), H.score_at(0.20)
-    dec_rates = H.deciles()
 
-    cart = q_slow("SELECT least(f_c, 3)::int AS c, count(*) AS n, avg(y) AS rate FROM eval_log GROUP BY 1 ORDER BY 1")
-    E0, E1 = EDGES
-    heat_df = q_slow(f"""SELECT least(f_c, 2)::int AS c,
-        CASE WHEN f_avg_price <= 0 THEN 3 WHEN f_avg_price < {E0} THEN 0 WHEN f_avg_price < {E1} THEN 1 ELSE 2 END AS pb,
-        count(*) AS n, avg(y) AS rate FROM eval_log GROUP BY 1, 2""")
-    dur_df = q_slow(f"""SELECT CASE WHEN f_dur < {math.log(11)} THEN 0 WHEN f_dur < {math.log(31)} THEN 1
-                              WHEN f_dur < {math.log(121)} THEN 2 ELSE 3 END AS d, count(*) AS n, avg(y) AS rate
-                        FROM eval_log GROUP BY 1 ORDER BY 1""")
-    cat = q_slow("SELECT category, views, carts, purchases FROM category_insights")
-    hm = q_slow("""SELECT extract(isodow FROM t_pred AT TIME ZONE 'UTC')::int AS d,
-                          extract(hour FROM t_pred AT TIME ZONE 'UTC')::int AS h, count(*) AS n FROM eval_log GROUP BY 1, 2""")
-    live_rows = q("""SELECT session_id, n_events, n_cart, prob FROM session_state
-                     WHERE predicted AND NOT closed ORDER BY last_time DESC LIMIT 5""")
+# ------------------------------------------------------------------ tampilan
+def view_pipeline(s, n_active, base, t5, t20, met, age):
+    now, ev = time.time(), float(nz(s.events_total))
+    hist_ev = [x for x in st.session_state.get("ev_hist", []) if now - x[0] <= 60 and x[1] <= ev] + [(now, ev)]
+    st.session_state["ev_hist"] = hist_ev
+    span = now - hist_ev[0][0]
+    rate = (ev - hist_ev[0][1]) / span if span >= 5 else None
+    running = age <= LIVE_SEC
+    period = f"{tgl(met.day.min())} - {tgl(met.day.max())}" if len(met) else "-"
 
-    # ---------------- baris ringkasan
-    k = st.columns(6)
-    k[0].markdown(kpi("Total Event", short(s.events_total), "view, cart, purchase", tip="Jumlah event view, cart, dan purchase yang telah diproses pipeline."), unsafe_allow_html=True)
-    k[1].markdown(kpi("Sesi Dinilai", short(n_sess), "sesi selesai berlabel", met.n.tolist(),
-                      tip="Sesi yang diprediksi pada event ke-3 dan telah selesai (30 menit tanpa event baru), sehingga labelnya (purchase atau tidak) diketahui. Garis kecil: jumlah per hari."), unsafe_allow_html=True)
-    k[2].markdown(kpi("Tingkat Pembelian", pc(base), f"{short(n_buy)} sesi purchase", (met.pos_rate * 100).tolist(),
-                      tip="Persentase sesi dinilai yang berakhir dengan purchase setelah event ke-3."), unsafe_allow_html=True)
-    k[3].markdown(kpi("AUC Harian", dec(w_auc, 2) if w_auc == w_auc else "-", "rata-rata; acuan acak 0,5", ok.auc.tolist(),
-                      tip="Rata-rata ROC-AUC harian, berbobot jumlah sesi. 0,5 = prediksi acak, 1 = sempurna."), unsafe_allow_html=True)
-    k[4].markdown(kpi("Precision@5%", pc(w_p5, 0) if w_p5 == w_p5 else "-",
-                      f"lift {dec(w_p5 / base, 1)}x terhadap acak" if w_p5 == w_p5 else "-", ok.p_at_5.tolist(),
-                      tip="Rata-rata harian persentase purchase pada 5% sesi dengan skor prediksi tertinggi. Lift = nilai ini dibagi tingkat pembelian rata-rata."), unsafe_allow_html=True)
-    k[5].markdown(kpi("Sesi Aktif", idn(act), "diprediksi, belum selesai", tip="Sesi yang sudah diprediksi dan masih menunggu sesi selesai (30 menit tanpa event baru)."), unsafe_allow_html=True)
+    a = st.columns([1, 1.35])
+    a[0].markdown(card(
+        "Status Pipeline", "Alur data: Kafka atau HDFS, Spark Structured Streaming, PostgreSQL",
+        tiles([
+            ("Status", "Berjalan" if running else "Berhenti", f"diperbarui {lalu(age)}"),
+            ("Kecepatan", "-" if rate is None else f"{idn(rate if running else 0)} event/detik", "rata-rata 1 menit terakhir"),
+            ("Event diproses", idn(nz(s.events_total)), f"offset Kafka terakhir {idn(s.last_offset) if pd.notna(s.last_offset) else '-'}"),
+            ("Data hingga", waktu(s.last_event_time) if pd.notna(s.last_event_time) else "-", "waktu event terakhir (UTC)"),
+            ("Micro-batch selesai", idn(nz(s.batches)), "query sesi"),
+            ("Sesi dipelajari model", idn(nz(s.sessions_learned)), "pembelajaran online, satu kali per sesi selesai"),
+            ("Sesi aktif", idn(n_active), "sudah diprediksi, hasil belum diketahui"),
+            ("Periode data", period, "menurut waktu prediksi (UTC)"),
+        ]),
+        tip="Status Berjalan apabila PostgreSQL menerima hasil micro-batch dalam 90 detik terakhir. Offset Kafka dapat lebih besar "
+            "dari jumlah event apabila sebagian event di awal topic dilewati saat pemrosesan ulang."), unsafe_allow_html=True)
 
-    # ---------------- baris 1: kinerja model
-    a = st.columns([1.2, 1.2, 1.1, 1.05])
-    if len(ok) > 1:
-        lo_a, hi_a = 0.5, min(1.0, math.ceil((ok.auc.max() + 0.02) * 20) / 20)
-        a[0].markdown(card("AUC Harian", "ROC-AUC per hari; sumbu mulai dari 0,5 (acak)",
-                           line_html(list(ok.day), ok.auc.astype(float).tolist(), lo_a, hi_a, lambda v: dec(v, 2)), H1,
-                           tip="Area di bawah kurva ROC pada sesi hari tersebut. Mengukur kemampuan model menempatkan sesi purchase di atas sesi tanpa purchase."),
-                      unsafe_allow_html=True)
-        p5 = ok.p_at_5.astype(float).tolist()
-        a[1].markdown(card("Precision@5% Harian", "Garis oranye: tingkat pembelian rata-rata semua sesi",
-                           line_html(list(ok.day), p5, 0, min(1.0, max(max(p5), base) * 1.25),
-                                     lambda v: pc(v, 0), ref=base, ref_label=f"rata-rata {pc(base)}"), H1,
-                           tip="Persentase purchase pada 5% sesi berskor tertinggi di hari tersebut. Garis biru di atas garis oranye berarti model lebih baik daripada memilih sesi secara acak."),
-                      unsafe_allow_html=True)
-    else:
-        a[0].markdown(card("AUC Harian", "", '<div class="note">Belum cukup hari data.</div>', H1), unsafe_allow_html=True)
-        a[1].markdown(card("Precision@5% Harian", "", '<div class="note">Belum cukup hari data.</div>', H1), unsafe_allow_html=True)
-    a[2].markdown(card("Tingkat Pembelian menurut Desil Skor", "Sesi dibagi 10 kelompok sama besar menurut skor prediksi",
-                       bars_v(dec_rates, [str(i) for i in range(1, 11)], lambda v: pc(v, 0), base=base,
-                              base_label=f"rata-rata {pc(base)}", label_ends=True,
-                              subs=["rendah"] + [""] * 8 + ["tinggi"],
-                              tips=[f"Desil {i + 1}: {pc(v)} purchase" for i, v in enumerate(dec_rates)]), H1,
-                       tip="Sesi diurutkan dari skor terendah (desil 1) ke tertinggi (desil 10). Tinggi batang = persentase purchase. Batang yang naik ke kanan menunjukkan skor berurutan dengan benar."),
-                  unsafe_allow_html=True)
-    best = max(range(1, 51), key=lambda p: H.ops(p / 100)[2])
-    shares = sorted({2, 5, 10, 20, best})
-    trs = ""
-    for p in shares:
-        pr, rc, f1 = H.ops(p / 100)
-        trs += (f'<tr class="{"best" if p == best else ""}"><td>Top {p}%{" *" if p == best else ""}</td><td>{pc(pr, 0)}</td>'
-                f'<td>{pc(rc, 0)}</td><td>{dec(f1, 2)}</td><td>{dec(pr / base, 1)}x</td></tr>')
-    a[3].markdown(card("Precision, Recall, F1 menurut Ambang", "Sesi dengan skor tertinggi ditandai sebagai calon pembeli",
-                       '<table class="tb"><tr><th>Ditandai</th><th>Precision</th><th>Recall</th><th>F1</th><th>Lift</th></tr>'
-                       + trs + '</table><div class="note">* F1 tertinggi. Lift = Precision / tingkat pembelian rata-rata.</div>', H1,
-                       tip="Precision: proporsi sesi yang ditandai yang benar-benar purchase. Recall: proporsi seluruh sesi purchase yang berhasil ditandai. F1: rata-rata harmonik keduanya. Dihitung pada seluruh sesi dinilai."),
-              unsafe_allow_html=True)
-
-    # ---------------- baris 2: faktor yang berpengaruh
-    b = st.columns([1, 1.15, 1, 1.2])
-    cr = {int(r.c): (float(r.rate), int(r.n)) for r in cart.itertuples()}
-    b[0].markdown(card("Tingkat Pembelian menurut Jumlah Cart", "Jumlah event cart pada 3 event pertama sesi",
-                       bars_v([cr.get(i, (0, 0))[0] for i in range(4)], [f"{i} cart" for i in range(4)],
-                              lambda v: pc(v), base=base, base_label=f"rata-rata {pc(base)}",
-                              subs=[f"{short(cr.get(i, (0, 0))[1])} sesi" for i in range(4)]), H2,
-                       tip="Prediksi dibuat pada 3 event pertama, sehingga jumlah view = 3 dikurangi jumlah cart."),
-                  unsafe_allow_html=True)
-    pr_names = [f"Rendah (&lt;{idn(math.exp(E0) - 1)})", f"Sedang ({idn(math.exp(E0) - 1)}-{idn(math.exp(E1) - 1)})", f"Tinggi (&ge;{idn(math.exp(E1) - 1)})"]
-    grid = {(int(r.c), int(r.pb)): (float(r.rate), int(r.n)) for r in heat_df.itertuples()}
-    valid_n = sum(v[1] for kx, v in grid.items() if kx[1] < 3)
-    vals = [v[0] for kx, v in grid.items() if kx[1] < 3 and v[1] >= 0.005 * max(valid_n, 1)]
-    vmax = max(vals + [1e-9])
-    rows_lab = ["0 cart", "1 cart", "2+ cart"]
-
-    def cell(r, c):
-        key = (rows_lab.index(r), pr_names.index(c))
-        if key not in grid:
-            return None
-        rate, n = grid[key]
-        return rate / vmax, pc(rate, 0 if rate >= 0.1 else 1), f"{short(n)} sesi", f"{r}, harga {c}: {pc(rate)} purchase dari {idn(n)} sesi"
-
-    no_price = sum(v[1] for kx, v in grid.items() if kx[1] == 3)
-    b[1].markdown(card("Tingkat Pembelian menurut Cart dan Harga", "Warna = tingkat pembelian; angka kecil = jumlah sesi",
-                       heat(rows_lab, pr_names, cell, 56), H2,
-                       extra=f'<div class="note">Kelompok harga: tertil rata-rata harga produk pada 3 event pertama. Tanpa harga valid: {short(no_price)} sesi (tidak ditampilkan).</div>',
-                       tip="Batas kelompok harga ditetapkan dari 70% awal data dan sama dengan yang dipakai model. Sel yang lebih gelap adalah segmen dengan tingkat pembelian lebih rendah."),
-              unsafe_allow_html=True)
-    dr = {int(r.d): (float(r.rate), int(r.n)) for r in dur_df.itertuples()}
-    dlab = ["&le;10 dtk", "10-30 dtk", "30 dtk-2 mnt", "&gt;2 mnt"]
-    b[2].markdown(card("Tingkat Pembelian menurut Durasi Awal", "Selang waktu dari event ke-1 hingga ke-3",
-                       bars_v([dr.get(i, (0, 0))[0] for i in range(4)], dlab, lambda v: pc(v), base=base,
-                              base_label=f"rata-rata {pc(base)}", subs=[f"{short(dr.get(i, (0, 0))[1])} sesi" for i in range(4)]), H2),
-                  unsafe_allow_html=True)
+    rows = q("SELECT session_id, n_cart, prob, t_pred FROM active_predictions ORDER BY t_pred DESC, session_id LIMIT 7")
 
     def lab(p):
         if p >= t5:
@@ -450,65 +506,238 @@ def live():
             return "Sedang", "p-md"
         return "Rendah", "p-lo"
 
-    if len(live_rows):
+    if len(rows):
         body = "".join(
-            f'<tr><td class="mono">{html.escape(str(r.session_id)[:9])}</td><td>{int(r.n_events)}</td><td>{int(r.n_cart)}</td>'
-            f'<td>{r.prob * 100:.0f}%</td><td><span class="pill {lab(r.prob)[1]}">{lab(r.prob)[0]}</span></td></tr>'
-            for r in live_rows.itertuples())
-        tb = ('<table class="tb"><tr><th>Sesi</th><th>Event</th><th>Cart</th><th>Probabilitas</th><th>Status</th></tr>' + body + "</table>"
-              f'<div class="note">Status menurut skor: Tinggi = 5% teratas (&ge; {pc(t5, 0)}), Sedang = 5-20% (&ge; {pc(t20, 0)}), Rendah = lainnya.</div>')
+            f'<tr><td class="mono">{html.escape(str(r.session_id)[:13])}</td><td>{tgl(utc(r.t_pred))} '
+            f'{utc(r.t_pred):%H:%M}</td><td>{int(r.n_cart)}</td><td>{pc(r.prob, 0)}</td>'
+            f'<td><span class="pill {lab(r.prob)[1]}">{lab(r.prob)[0]}</span></td></tr>' for r in rows.itertuples())
+        tb = ('<table class="tb"><tr><th>Sesi</th><th>Diprediksi (UTC)</th><th>Masuk keranjang</th><th>Probabilitas</th><th>Kategori skor</th></tr>'
+              + body + "</table>")
     else:
         tb = '<div class="note">Tidak ada sesi aktif.</div>'
-    b[3].markdown(card("Sesi Aktif", "Sesi terbaru yang telah diprediksi dan belum selesai", tb, H2,
-                       tip="Probabilitas purchase dihitung saat sesi mencapai event ke-3. Batas status ditentukan dari sebaran skor seluruh sesi dinilai."),
+    a[1].markdown(card("Sesi Aktif Terbaru", "Diprediksi pada event ke-3; hasil diketahui setelah 30 menit tanpa aktivitas", tb,
+                       tip=f"Probabilitas pembelian dihitung saat sesi mencapai event ke-3, sebelum hasilnya diketahui. Kategori skor: "
+                           f"Tinggi = 5% skor teratas (minimal {pc(t5, 0)}), Sedang = 5-20% teratas (minimal {pc(t20, 0)}), Rendah = lainnya."),
                   unsafe_allow_html=True)
 
-    # ---------------- baris 3: konteks dan ringkasan
-    c = st.columns([1, 1, 1.25, 1.1])
-    v, ca, pu = int(cat.views.sum()), int(cat.carts.sum()), int(cat.purchases.sum())
-    n_cart_s = sum(cr[i][1] for i in (1, 2, 3) if i in cr)
-    fun = ('<div class="note" style="margin:0 0 1px 0">Event</div>'
-           + hbars([("View", v, ""), ("Cart", ca, f"&middot; {pc(ca / v) if v else '-'} dari view"),
-                    ("Purchase", pu, f"&middot; {pc(pu / ca) if ca else '-'} dari cart")], short)
-           + '<div class="note" style="margin:6px 0 1px 0">Sesi</div>'
-           + hbars([("Sesi dinilai", n_sess, ""), ("Sesi dengan cart", n_cart_s, f"&middot; {pc(n_cart_s / n_sess)} dari sesi dinilai"),
-                    ("Sesi purchase", n_buy, f"&middot; {pc(base)} dari sesi dinilai")], short, maxv=n_sess))
-    c[0].markdown(card("Funnel Konversi", "Jumlah per tahap pada level event dan level sesi", fun, H3,
-                       tip="Level event: seluruh event yang diproses. Level sesi: sesi dinilai; cart dihitung pada 3 event pertama sesi."),
-                  unsafe_allow_html=True)
-    nm = lambda x: "(tanpa kategori)" if x == "unknown" else str(x).title()
-    top = cat.assign(conv=lambda d: d.purchases / d.views.where(d.views > 0)).sort_values("purchases", ascending=False).head(6)
-    c[1].markdown(card("Kategori Teratas menurut Purchase", "Jumlah purchase; persentase = purchase / view pada kategori",
-                       hbars([(nm(r.category), int(r.purchases), f"&middot; {pc(r.conv)}") for r in top.itertuples()], short) if len(top)
-                       else '<div class="note">Belum ada data.</div>', H3), unsafe_allow_html=True)
-    g = {(int(r.d), int(r.h)): int(r.n) for r in hm.itertuples()}
-    mx = max(g.values()) if g else 1
-    dn = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"]
-    cols_h = [str(h_) if h_ % 6 == 0 else "" for h_ in range(24)]
-    out = ['<div class="hm" style="grid-template-columns:28px repeat(24,1fr);height:100%;grid-template-rows:auto repeat(7,1fr);gap:1px"><div></div>']
-    out += [f'<div class="t">{x}</div>' for x in cols_h]
-    for d in range(1, 8):
-        out.append(f'<div class="l">{dn[d - 1]}</div>')
-        for h_ in range(24):
-            n = g.get((d, h_), 0)
-            out.append(f'<div class="c" title="{dn[d - 1]} {h_:02d}:00: {idn(n)} sesi" style="background:rgb{ramp(n / mx)};border-radius:2px"></div>')
-    out.append("</div>")
-    c[2].markdown(card("Volume Sesi menurut Hari dan Jam", "Jumlah sesi dinilai per hari dan jam (UTC); warna lebih terang = lebih banyak",
-                       "".join(out), H3), unsafe_allow_html=True)
+    if len(met) > 1:
+        days = [tgl(d) for d in met.day]
+        n_vals, r_vals = met.n.astype(float).tolist(), met.pos_rate.astype(float).tolist()
+        marks, odd = unusual_days(met)
+        body = (f'<div class="sm"><span class="t">Jumlah sesi dinilai per hari</span>'
+                + line_chart(days, [("Sesi", n_vals, BLUE)], *nice_range(0, max(n_vals), 2), fmt=short, flags=marks["n"]) + "</div>"
+                + f'<div class="sm"><span class="t">Tingkat pembelian per hari</span>'
+                + line_chart(days, [("Tingkat pembelian", r_vals, BLUE)], *nice_range(0, max(r_vals), 2), fmt=lambda v: pc(v, 0),
+                             ref=base, ref_label=f"rata-rata {pc(base)}", flags=marks["r"]) + "</div>")
+    else:
+        body, odd = '<div class="note">Data harian belum mencukupi.</div>', []
+    st.markdown(card("Volume dan Tingkat Pembelian Harian", "Pemantauan data masuk dan deteksi anomali harian",
+                     body, h=330,
+                     legend=legend([(f"Anomali ({len(odd)})", WARN, "o")]) if odd else "",
+                     tip=["Anomali: tingkat pembelian 0%, atau volume maupun tingkat pembelian di luar 0,3 sampai 2 kali median "
+                          "(hari menurut waktu prediksi, UTC)."]
+                         + (["Terdeteksi: " + "; ".join(odd) + "."] if odd else [])), unsafe_allow_html=True)
 
-    pr5, rc5, _ = H.ops(0.05)
-    pbest, rbest, _ = H.ops(best / 100)
-    fi = []
-    if 0 in cr and cr[0][0] > 0:
-        with_c = sum(cr[i][0] * cr[i][1] for i in (1, 2, 3) if i in cr) / max(sum(cr[i][1] for i in (1, 2, 3) if i in cr), 1)
-        fi.append(f"Sesi dengan cart: purchase <b>{pc(with_c)}</b>; tanpa cart: <b>{pc(cr[0][0])}</b> (rasio {dec(with_c / cr[0][0], 1)}x).")
-    fi.append(f"Desil skor tertinggi: purchase <b>{pc(dec_rates[-1])}</b>, {dec(dec_rates[-1] / base, 1)}x rata-rata semua sesi.")
-    fi.append(f"Top 5%: Precision <b>{pc(pr5, 0)}</b>, Recall <b>{pc(rc5, 0)}</b>.")
-    fi.append(f"F1 tertinggi pada Top {best}%: Precision {pc(pbest, 0)}, Recall {pc(rbest, 0)}.")
-    if len(top):
-        fi.append(f"Kategori dengan purchase terbanyak: <b>{html.escape(nm(top.iloc[0].category))}</b> ({short(top.iloc[0].purchases)}).")
-    c[3].markdown(card("Ringkasan", "Dihitung otomatis dari data yang tampil", "".join(f'<div class="fi">{t}</div>' for t in fi), H3),
+
+def view_model(Hs, base, met, ok, w_auc):
+    a = st.columns([1, 1, 1.1])
+    if len(ok) > 1:
+        days = [tgl(d) for d in met.day]                 # semua hari: hari tanpa AUC tampil sebagai celah
+        auc = met.auc.astype(float).tolist()
+        gaps = [tgl(d) for d in met.day[met.auc.isna()]]
+        gap_note = ("Hari tanpa nilai AUC: " + ", ".join(gaps) + ".") if gaps else ""
+        a[0].markdown(card("AUC Harian", "ROC-AUC per hari; sumbu dimulai dari 0,5 (setara pemilihan acak)",
+                           line_chart(days, [("AUC", auc, BLUE)], *nice_range(0.5, min(1.0, ok.auc.max() + 0.01)),
+                                      fmt=lambda v: dec(v, 2), ref=w_auc, ref_label=f"rata-rata {dec(w_auc, 2)}"),
+                           tip=["Peluang model memberi skor lebih tinggi kepada sesi yang berakhir dengan pembelian dibanding sesi lainnya, "
+                                "dihitung per hari. Skor dibuat sebelum hasil sesi diketahui (prequential).",
+                                "Hari tanpa pembelian atau dengan kurang dari 50 sesi tidak memiliki nilai AUC dan tampil sebagai celah, "
+                                "termasuk pada grafik Precision@5%." + (" " + gap_note if gap_note else "")]),
+                      unsafe_allow_html=True)
+        p5 = met.p_at_5.astype(float).tolist()
+        a[1].markdown(card("Precision@5% Harian", "Persentase pembeli di antara 5% sesi berskor tertinggi tiap hari",
+                           line_chart(days, [("Precision@5%", p5, BLUE)], *nice_range(0, min(1.0, max(ok.p_at_5.max(), base) * 1.05)),
+                                      fmt=lambda v: pc(v, 0), ref=base, ref_label=f"pemilihan acak ({pc(base)})"),
+                           tip="Garis acuan adalah tingkat pembelian rata-rata, yaitu hasil yang diperoleh apabila sesi dipilih secara acak."),
+                      unsafe_allow_html=True)
+    else:
+        for i, t in enumerate(["AUC Harian", "Precision@5% Harian"]):
+            a[i].markdown(card(t, "", '<div class="note">Data harian belum mencukupi.</div>'), unsafe_allow_html=True)
+
+    w = q_slow("SELECT batch, feature, weight FROM model_weights ORDER BY batch")
+    if w.batch.nunique() > 1:
+        pv = w.pivot(index="batch", columns="feature", values="weight").sort_index()
+        feats = [f for f in FEAT_NAMES if f in pv.columns]
+        series = [(FEAT_NAMES[f], pv[f].astype(float).tolist(), SERIES[i]) for i, f in enumerate(feats)]
+        allv = [v for _, vals, _ in series for v in vals] + [0.0]
+        lo_w, hi_w, nt = nice_range(min(allv), max(allv))
+        last = {FEAT_NAMES[f]: float(pv[f].iloc[-1]) for f in feats}
+        a[2].markdown(card("Bobot Model dari Waktu ke Waktu", "Bobot regresi logistik online pada skala terstandardisasi, dicatat setiap 10 batch",
+                           line_chart([f"Batch {b}" for b in pv.index], series, lo_w, hi_w, nt, fmt=lambda v: dec(v, 1)),
+                           legend=legend([(f"{nm} {dec(last[nm], 2)}", col, "b") for nm, _, col in series]),
+                           tip=["Bobot positif menaikkan peluang pembelian. Angka pada legenda adalah bobot pada batch terakhir.",
+                                "Besar bobot tidak mencerminkan tingkat kepentingan fitur apabila fitur saling berkorelasi. Harga rata-rata "
+                                "dan harga tertinggi berkorelasi kuat, sehingga bobot keduanya perlu dibaca bersama."]),
+                      unsafe_allow_html=True)
+    else:
+        a[2].markdown(card("Bobot Model dari Waktu ke Waktu", "", '<div class="note">Bobot dicatat setiap 10 batch; jumlah batch belum mencukupi.</div>'),
+                      unsafe_allow_html=True)
+
+    b = st.columns([1.25, 1])
+    dd = Hs.deciles()
+    rates, scores = [x[0] for x in dd], [x[1] for x in dd]
+    b[0].markdown(card("Tingkat Pembelian menurut Desil Skor", "Sesi dibagi menjadi 10 kelompok sama besar menurut skor model",
+                       bars_v(rates, [str(i) for i in range(1, 11)], lambda v: pc(v, 0), ref=base,
+                              ref_label=f"rata-rata {pc(base)}", markers=scores, label_idx={0, 8, 9},
+                              tips=[f"Desil {i + 1}: tingkat pembelian aktual {pc(r)}, rata-rata skor {pc(p)}" for i, (r, p) in enumerate(dd)],
+                              axis_note=("skor terendah", "skor tertinggi")),
+                       legend=legend([("Tingkat pembelian aktual", BLUE, "b"), ("Rata-rata skor model", ORANGE, "c"),
+                                      ("Rata-rata semua sesi", REF, "r")]),
+                       tip=["Desil 1 berisi 10% sesi dengan skor terendah, desil 10 berisi 10% sesi dengan skor tertinggi.",
+                            "Titik menunjukkan rata-rata skor model pada desil tersebut. Kalibrasi tepat apabila titik berada di ujung batang."]),
                   unsafe_allow_html=True)
+
+    best = max(range(1, 51), key=lambda p: Hs.ops(p / 100)[2])
+    trs = ""
+    for p in sorted({1, 2, 5, 10, 20, best}):
+        pr, rc, f1 = Hs.ops(p / 100)
+        trs += (f'<tr class="{"best" if p == best else ""}"><td>{p}% skor teratas'
+                f'{"<span class=tag>F1 tertinggi model</span>" if p == best else ""}</td><td>{pc(pr, 0)}</td>'
+                f'<td>{pc(rc, 0)}</td><td>{dec(f1, 2)}</td><td>{dec(pr / base, 1)}x</td></tr>')
+    rule = q_slow("SELECT count(*) FILTER (WHERE f_c > 0) AS n, coalesce(sum(y) FILTER (WHERE f_c > 0), 0) AS b FROM eval_log").iloc[0]
+    if rule.n:
+        rp, rr = rule.b / rule.n, rule.b / Hs.B
+        trs += (f'<tr class="rule"><td>Aturan keranjang ({pc(rule.n / Hs.N, 0)} sesi)</td><td>{pc(rp, 0)}</td><td>{pc(rr, 0)}</td>'
+                f'<td>{dec(f1_of(rp, rr), 2)}</td><td>{dec(rp / base, 1)}x</td></tr>')
+    b[1].markdown(card("Simulasi Penandaan Calon Pembeli", "Hasil apabila sebagian sesi dengan skor tertinggi ditandai sebagai calon pembeli",
+                       '<table class="tb"><tr><th>Sesi ditandai</th><th>Precision (ketepatan)</th><th>Recall (cakupan)</th>'
+                       '<th>F1</th><th>Lift</th></tr>'
+                       + trs + "</table>",
+                       tip=["Precision: dari sesi yang ditandai, berapa persen yang benar-benar membeli. Recall: dari seluruh pembeli, "
+                            "berapa persen yang berhasil ditandai. F1: nilai tengah keduanya. Lift: precision dibagi tingkat pembelian rata-rata.",
+                            "Semakin sedikit sesi yang ditandai, precision naik tetapi recall turun. Panel ini membantu memilih jumlah sesi "
+                            "yang ditandai sesuai kapasitas tindakan, misalnya jumlah voucher atau agen layanan.",
+                            "Aturan keranjang adalah pembanding tanpa model: seluruh sesi dengan aktivitas keranjang pada 3 event pertama ditandai."]),
+                  unsafe_allow_html=True)
+
+
+def view_customers(Hs, base):
+    E0, E1 = EDGES
+    a = st.columns([1.2, 1, 1])
+    heat_df = q_slow(f"""SELECT least(f_c, 2)::int AS c,
+        CASE WHEN f_avg_price <= 0 THEN 3 WHEN f_avg_price < {E0} THEN 0 WHEN f_avg_price < {E1} THEN 1 ELSE 2 END AS pb,
+        count(*) AS n, avg(y) AS rate FROM eval_log GROUP BY 1, 2""")
+    pr_names = [f"Harga rendah<br>&lt; {idn(math.exp(E0) - 1)}", f"Harga sedang<br>{idn(math.exp(E0) - 1)}-{idn(math.exp(E1) - 1)}",
+                f"Harga tinggi<br>&ge; {idn(math.exp(E1) - 1)}"]
+    grid = {(int(r.c), int(r.pb)): (float(r.rate), int(r.n)) for r in heat_df.itertuples()}
+    vmax = max([v[0] for k, v in grid.items() if k[1] < 3] + [1e-9])
+    rows_lab = ["0 kali", "1 kali", "&ge; 2 kali"]
+
+    def cell(r, c):
+        key = (rows_lab.index(r), pr_names.index(c))
+        if key not in grid:
+            return None
+        rate, n = grid[key]
+        return (rate / vmax, pc(rate, 0 if rate >= 0.1 else 1), f"{short(n)} sesi",
+                f"Masuk keranjang {html.unescape(r)}, {html.unescape(c.replace('<br>', ' '))}: tingkat pembelian {pc(rate)} dari {idn(n)} sesi")
+
+    no_price = sum(v[1] for k, v in grid.items() if k[1] == 3)
+    a[0].markdown(card("Tingkat Pembelian menurut Keranjang dan Harga", "Baris: jumlah masuk keranjang pada 3 event pertama; warna lebih terang = tingkat pembelian lebih tinggi",
+                       heat(rows_lab, pr_names, cell, first_col=64, corner="Masuk<br>keranjang"), h=430,
+                       tip=f"Harga adalah rata-rata harga produk pada 3 event pertama, dibagi tiga kelompok menurut sebaran 70% awal data. "
+                           f"Sesi tanpa harga valid ({short(no_price)} sesi) tidak ditampilkan."),
+                  unsafe_allow_html=True)
+
+    cat = q_slow("SELECT category, views, carts, purchases FROM category_insights")
+    v, ca, pu = (int(cat[c].sum()) for c in ("views", "carts", "purchases"))
+    sess = q_slow("SELECT count(*) AS n, count(*) FILTER (WHERE f_c > 0) AS nc, coalesce(sum(y), 0) AS nb FROM eval_log").iloc[0]
+    fun = ('<div class="grp">Event</div>'
+           + hbars([("Lihat produk", v, ""), ("Masuk keranjang", ca, f"{pc(ca / v) if v else '-'} dari lihat produk"),
+                    ("Pembelian", pu, f"{pc(pu / ca) if ca else '-'} dari masuk keranjang")], short)
+           + '<div class="grp" style="margin-top:10px">Sesi</div>'
+           + hbars([("Seluruh sesi dinilai", int(sess.n), ""),
+                    ("Masuk keranjang pada 3 event pertama", int(sess.nc), f"{pc(sess.nc / sess.n) if sess.n else '-'}"),
+                    ("Berakhir dengan pembelian", int(sess.nb), f"{pc(sess.nb / sess.n) if sess.n else '-'}")], short, maxv=int(sess.n)))
+    a[1].markdown(card("Funnel Konversi", "Jumlah per tahap pada tingkat event dan tingkat sesi", fun, h=430,
+                       tip="Tingkat event: seluruh event yang diproses. Tingkat sesi: sesi yang dinilai model. Persentase pembelian pada "
+                           "tingkat event adalah rasio jumlah event, bukan proporsi produk di keranjang yang dibeli."), unsafe_allow_html=True)
+
+    nm = lambda x: CATEGORY_NAMES.get(x, str(x).replace("_", " ").capitalize())
+    top = cat.assign(conv=lambda d: d.purchases / d.views.where(d.views > 0)).sort_values("purchases", ascending=False).head(7)
+    a[2].markdown(card("Kategori Teratas menurut Pembelian", "Jumlah pembelian dan rasio pembelian terhadap lihat produk",
+                       hbars([(nm(r.category), int(r.purchases), pc(r.conv)) for r in top.itertuples()], short) if len(top)
+                       else '<div class="note">Belum ada data.</div>', h=430,
+                       tip="Kode kategori pada data mulai Desember 2019 tidak konsisten, sehingga kategori diambil dari pemetaan produk "
+                           "Oktober-November 2019. Produk di luar pemetaan dikelompokkan sebagai Tanpa kategori."),
+                  unsafe_allow_html=True)
+
+
+# ------------------------------------------------------------------ halaman
+@st.fragment(run_every=3)
+def live():
+    try:
+        render()
+    except psycopg2.OperationalError:
+        st.error("Tidak dapat terhubung ke PostgreSQL. Pastikan layanan PostgreSQL berjalan dan pengaturan di db_config.py "
+                 "sudah benar. Halaman akan mencoba kembali secara otomatis.")
+
+
+def render():
+    s = q("SELECT * FROM pipeline_stats WHERE id = 1")
+    head = ('<div class="hd"><div><b>Pemantauan Prediksi Pembelian Sesi</b><span class="s">Kafka &middot; HDFS &middot; '
+            "Spark Structured Streaming &middot; River &middot; PostgreSQL &middot; sampel 10% sesi dataset REES46</span></div>{}</div>")
+    if s.empty:
+        st.markdown(head.format(""), unsafe_allow_html=True)
+        st.info("Belum terdapat data di PostgreSQL. Jalankan python -m pipeline.stream_processor; "
+                "untuk pemrosesan langsung, jalankan juga python -m pipeline.producer.")
+        return
+    s = s.iloc[0]
+    age = (pd.Timestamp.now(tz="UTC") - pd.Timestamp(s.updated_at).tz_convert("UTC")).total_seconds()
+    until = waktu(s.last_event_time) if pd.notna(s.last_event_time) else "-"
+    st.markdown(head.format(
+        f'<div class="fresh"><span class="dot {"on" if age <= LIVE_SEC else "off"}"></span>'
+        f'{"Berjalan" if age <= LIVE_SEC else "Berhenti"} &middot; data hingga {until} UTC &middot; diperbarui {lalu(age)}</div>'),
+        unsafe_allow_html=True)
+
+    hist = q_slow("SELECT floor(prob * 2000)::int AS b, count(*) AS n, sum(y)::float AS buy, sum(prob) AS ps "
+                  "FROM eval_log GROUP BY 1")
+    if hist.empty:
+        st.info("Menunggu sesi pertama selesai, yaitu 30 menit tanpa aktivitas menurut waktu data.")
+        return
+    Hs = Hist(hist)
+    base = Hs.B / Hs.N
+    met = q("SELECT day, n, pos_rate, auc, pr_auc, p_at_5 FROM metrics_daily ORDER BY day")
+    met["day"] = pd.to_datetime(met["day"])
+    if len(met) > 3 and met.n.iloc[-1] < 0.5 * met.n.median():
+        met = met.iloc[:-1]                      # hari terakhir biasanya belum penuh
+    ok = met.dropna(subset=["auc"])
+    wavg = lambda col: float((ok[col] * ok.n).sum() / ok.n.sum()) if len(ok) else float("nan")
+    w_auc, w_p5 = wavg("auc"), wavg("p_at_5")
+    n_active = int(q("SELECT count(*) AS n FROM active_predictions").iloc[0].n)
+
+    k = st.columns(5)
+    k[0].markdown(kpi("Event Diproses", short(nz(s.events_total)), "lihat produk, keranjang, pembelian",
+                      tip="Seluruh event yang telah dibaca dan diproses pipeline."), unsafe_allow_html=True)
+    k[1].markdown(kpi("Sesi Dinilai", short(Hs.N), "diprediksi dan hasilnya telah diketahui", met.n.tolist(),
+                      tip="Sesi dengan minimal 3 event tanpa pembelian pada 3 event pertama, yang telah selesai sehingga hasilnya diketahui. Grafik kecil menunjukkan jumlah per hari."),
+                  unsafe_allow_html=True)
+    k[2].markdown(kpi("Tingkat Pembelian", pc(base), f"{short(Hs.B)} sesi berakhir dengan pembelian", (met.pos_rate * 100).tolist(),
+                      tip="Proporsi sesi dinilai yang melakukan pembelian setelah event ke-3. Grafik kecil menunjukkan nilai per hari."), unsafe_allow_html=True)
+    k[3].markdown(kpi("AUC", dec(w_auc, 2) if w_auc == w_auc else "-", "rata-rata harian (acak = 0,5)", ok.auc.tolist(),
+                      tip="Rata-rata ROC-AUC harian, berbobot jumlah sesi."), unsafe_allow_html=True)
+    k[4].markdown(kpi("Precision@5%", pc(w_p5, 0) if w_p5 == w_p5 else "-",
+                      f"lift {dec(w_p5 / base, 1)}x terhadap pemilihan acak" if w_p5 == w_p5 else "-", ok.p_at_5.tolist(),
+                      tip="Rata-rata harian proporsi pembeli di antara 5% sesi dengan skor tertinggi."), unsafe_allow_html=True)
+
+    view = st.segmented_control("Tampilan", ["Pipeline", "Model", "Pelanggan"], default="Pipeline", key="view",
+                                label_visibility="collapsed") or "Pipeline"
+    t5, t20 = Hs.score_at(0.05), Hs.score_at(0.20)
+    if view == "Pipeline":
+        view_pipeline(s, n_active, base, t5, t20, met, age)
+    elif view == "Model":
+        view_model(Hs, base, met, ok, w_auc)
+    else:
+        view_customers(Hs, base)
 
 
 live()
