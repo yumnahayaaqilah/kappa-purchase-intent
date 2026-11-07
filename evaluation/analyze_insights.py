@@ -16,6 +16,9 @@ Parts:
   seg    score segments and expected value ranking on the test period (eval_log)
   early  how early: model quality vs share of buyer sessions still reachable, for K = 3, 5, 7, 10
 Output: results/insight_*.csv
+
+Cart events are incomplete before 8 Nov 2019 (evaluation/check_cart_logging.py), so the report figures for
+p2, p5, p6 and p7 come from:  python -m evaluation.analyze_insights --part p2 p5 p6 p7 --since 2019-11-08
 """
 import argparse
 import os
@@ -32,6 +35,8 @@ ap.add_argument("--events", default="ref/event_aggregates.parquet")
 ap.add_argument("--outdir", default="results")
 ap.add_argument("--train-frac", type=float, default=0.7)
 ap.add_argument("--early-k", nargs="+", type=int, default=[3, 5, 7, 10])
+ap.add_argument("--since", help="YYYY-MM-DD: p2, p5, p6, p7 only use sessions starting on/after this date "
+                                "(event aggregates: whole months from this date); files get a _since suffix")
 args = ap.parse_args()
 
 os.makedirs(args.outdir, exist_ok=True)
@@ -39,9 +44,20 @@ pd.set_option("display.width", 220)
 pd.set_option("display.max_columns", 30)
 pd.set_option("display.max_rows", 60)
 con = duckdb.connect()
-con.execute(f"CREATE VIEW s AS SELECT * FROM read_parquet('{args.sessions}')")
+con.execute(f"CREATE VIEW s_all AS SELECT * FROM read_parquet('{args.sessions}')")
+SUFFIX, MONTH0 = "", None
+if args.since:
+    since = pd.Timestamp(args.since)
+    MONTH0 = since.strftime("%Y-%m") if since.day == 1 else (since + pd.offsets.MonthBegin(1)).strftime("%Y-%m")
+    SUFFIX = "_since" + since.strftime("%Y%m%d")
+    con.execute(f"CREATE VIEW s AS SELECT * FROM s_all WHERE t1 >= TIMESTAMP '{since}'")
+    print(f"--since {args.since}: sesi mulai {since.date()} (p2, p5, p7); agregat event mulai bulan {MONTH0} (p6, p7). "
+          f"p8, anom, seg, early tidak difilter.")
+else:
+    con.execute("CREATE VIEW s AS SELECT * FROM s_all")
 if any(p in args.part for p in ("p6", "p7")):
-    con.execute(f"CREATE VIEW e AS SELECT * FROM read_parquet('{args.events}')")
+    month_filter = f"WHERE month >= '{MONTH0}'" if MONTH0 else ""
+    con.execute(f"CREATE VIEW e AS SELECT * FROM read_parquet('{args.events}') {month_filter}")
 
 PRICE_BANDS = """CASE WHEN {c} IS NULL THEN 'tanpa harga'
      WHEN {c} < 10 THEN 'a. < 10' WHEN {c} < 50 THEN 'b. 10-50' WHEN {c} < 100 THEN 'c. 50-100'
@@ -50,7 +66,12 @@ PRICE_BANDS = """CASE WHEN {c} IS NULL THEN 'tanpa harga'
 HARI = {1: "Senin", 2: "Selasa", 3: "Rabu", 4: "Kamis", 5: "Jumat", 6: "Sabtu", 7: "Minggu"}
 
 
+FILTERED = {"p2", "p5", "p6", "p7"}
+
+
 def save(df, name, title):
+    if SUFFIX and name.split("_")[0] in FILTERED:
+        name, title = name + SUFFIX, f"{title} [sejak {args.since}]"
     path = os.path.join(args.outdir, f"insight_{name}.csv")
     df.to_csv(path, index=False)
     print(f"\n== {title}  -> {path}")
@@ -222,7 +243,7 @@ def anom():
 def p8():
     con.execute("""CREATE TEMP TABLE u AS
         SELECT user_id, has_purchase, row_number() OVER (PARTITION BY user_id ORDER BY t1, sid) AS visit
-        FROM s WHERE user_id IS NOT NULL""")
+        FROM s_all WHERE user_id IS NOT NULL""")
     save(q("""
         SELECT CASE WHEN visit >= 10 THEN '10+' WHEN visit >= 5 THEN '5-9' ELSE visit::VARCHAR END AS kunjungan_ke,
                count(*) AS sesi, round(100 * avg(has_purchase::INT), 2) AS persen_membeli
@@ -254,7 +275,7 @@ def seg():
     lg = lg.sort_values(["t_pred", "sid"]).reset_index(drop=True)
     con.register("lg", lg)
     d = q("""SELECT lg.*, s.max_price_k, s.cart_value, s.purchase_value_after_k
-             FROM lg JOIN s USING (sid) ORDER BY lg.t_pred, lg.sid""")
+             FROM lg JOIN s_all s USING (sid) ORDER BY lg.t_pred, lg.sid""")
     if len(d) < len(lg):
         print(f"Peringatan: {len(lg) - len(d):,} sesi eval_log tidak ditemukan di session_insights")
     cut = int(len(d) * args.train_frac)
@@ -299,7 +320,7 @@ def early():
     from sklearn.metrics import average_precision_score, roc_auc_score
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
-    buyers = con.execute("SELECT count(*) FROM s WHERE has_purchase").fetchone()[0]
+    buyers = con.execute("SELECT count(*) FROM s_all WHERE has_purchase").fetchone()[0]
     feats = ["f_c", "f_avg_price", "f_max_price", "f_dur"]
     rows = []
     for k in args.early_k:
