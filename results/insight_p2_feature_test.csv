@@ -1,0 +1,4 @@
+fitur,ROC-AUC,PR-AUC
+4 fitur pipeline,0.735,0.2918
+4 fitur + kategori berbeda,0.7389,0.2899
+hanya kategori berbeda,0.56,0.1031

@@ -1,0 +1,17 @@
+harga_rata_rata,keranjang,sesi,persen_membeli
+a. < 10,ada keranjang,11961,22.09
+b. 10-50,ada keranjang,68814,27.1
+c. 50-100,ada keranjang,47629,32.18
+d. 100-250,ada keranjang,136571,38.52
+e. 250-500,ada keranjang,74064,38.01
+f. 500-1000,ada keranjang,51776,39.67
+g. >= 1000,ada keranjang,19075,39.49
+tanpa harga,ada keranjang,200,21.5
+a. < 10,tanpa keranjang,56611,5.96
+b. 10-50,tanpa keranjang,493247,5.81
+c. 50-100,tanpa keranjang,521065,5.02
+d. 100-250,tanpa keranjang,1002162,5.44
+e. 250-500,tanpa keranjang,667592,4.52
+f. 500-1000,tanpa keranjang,430456,4.18
+g. >= 1000,tanpa keranjang,147201,3.75
+tanpa harga,tanpa keranjang,984,3.66

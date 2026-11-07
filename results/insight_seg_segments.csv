@@ -1,0 +1,4 @@
+segmen,sesi,persen_sesi,skor_rata,persen_membeli,persen_dari_semua_pembeli,persen_dari_nilai_pembelian,persen_ada_keranjang,usulan_tindakan
+1. Tinggi (5% teratas),57311,5.12,41.56,41.84,23.38,26.7,100.0,"permudah checkout, tanpa diskon"
+2. Menengah (5-20%),187302,16.74,12.33,17.81,32.53,33.57,37.5,pengingat atau voucher terbatas
+3. Rendah (80% sisanya),874153,78.14,4.23,5.17,44.09,39.74,0.64,"rekomendasi produk, tanpa biaya promo"
