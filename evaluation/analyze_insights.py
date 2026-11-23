@@ -27,7 +27,7 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-PARTS = ["p2", "p5", "p6", "p7", "anom", "p8", "seg", "early"]
+PARTS = ["p2", "p5", "p6", "p7", "anom", "seg", "early"]   # p8 dihapus: sampel per sesi tidak mewakili urutan kunjungan pengguna
 ap = argparse.ArgumentParser()
 ap.add_argument("--part", nargs="+", default=PARTS, choices=PARTS)
 ap.add_argument("--sessions", default="ref/session_insights.parquet")
