@@ -1,0 +1,9 @@
+optimizer,learning_rate,roc_auc_val,pr_auc_val,precision_at_5pct_val
+AdaGrad,0.2,0.7466,0.2969,0.429
+AdaGrad,0.5,0.7463,0.2976,0.43
+AdaGrad,0.1,0.7456,0.2955,0.4301
+AdaGrad,1.0,0.7456,0.2976,0.4306
+AdaGrad,2.0,0.7448,0.2973,0.4278
+SGD,0.01,0.7437,0.2966,0.425
+SGD,0.05,0.7356,0.288,0.4158
+SGD,0.1,0.72,0.2716,0.4097
