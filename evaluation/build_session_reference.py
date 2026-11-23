@@ -12,6 +12,8 @@ t_pred = time of the K-th event; t_close = last event of the session + timeout.
 
     python -m evaluation.build_session_reference                       # whole sample
     python -m evaluation.build_session_reference --limit 28890655      # first 5 months (regression run)
+    python -m evaluation.build_session_reference --dedup --out ref/session_reference_7m_dedup.parquet
+                                                                       # exact duplicate rows removed first
 """
 import argparse
 import os
@@ -24,6 +26,8 @@ ap.add_argument("--limit", type=int, default=0, help="use only the first N rows 
 ap.add_argument("--k", type=int, default=3)
 ap.add_argument("--timeout-min", type=int, default=30)
 ap.add_argument("--out", default="ref/session_reference.parquet")
+ap.add_argument("--dedup", action="store_true",
+                help="drop exact duplicate rows (all 9 columns equal), keeping the first occurrence")
 args = ap.parse_args()
 K, GAP = args.k, args.timeout_min * 60
 
@@ -35,13 +39,20 @@ con.execute("PRAGMA threads=4")
 con.execute("PRAGMA temp_directory='duck_tmp'")
 
 limit = f"AND rn <= {args.limit}" if args.limit else ""
+ALL_COLS = "event_time, event_type, product_id, category_id, category_code, brand, price, user_id, user_session"
+dedup = (f"QUALIFY row_number() OVER (PARTITION BY {ALL_COLS} ORDER BY rn) = 1" if args.dedup else "")
 con.execute(f"""
     CREATE TEMP TABLE seq AS
-    WITH raw AS (
-        SELECT row_number() OVER () AS rn, user_session AS sid, event_type AS et,
+    WITH src AS (
+        SELECT row_number() OVER () AS rn, *
+        FROM read_csv('{args.sample}', header=true, all_varchar=true)
+    ),
+    src2 AS (SELECT * FROM src {dedup}),
+    raw AS (
+        SELECT rn, user_session AS sid, event_type AS et,
                CAST(replace(event_time, ' UTC', '') AS TIMESTAMP) AS t,
                TRY_CAST(price AS DOUBLE) AS price
-        FROM read_csv('{args.sample}', header=true, all_varchar=true)
+        FROM src2
     ),
     ev AS (SELECT * FROM raw WHERE sid IS NOT NULL AND sid <> '' {limit})
     SELECT sid, et, t, price, row_number() OVER w AS k,
@@ -82,4 +93,4 @@ con.execute(f"""
 """)
 n, pos, a, b = con.execute(
     f"SELECT count(*), sum(y), min(t_pred), max(t_pred) FROM '{args.out}'").fetchone()
-print(f"Saved {args.out}: {n:,} sessions | positives {pos:,} ({pos / n:.2%}) | t_pred {a} .. {b}")
+print(f"Saved {args.out}{' (deduplicated)' if args.dedup else ''}: {n:,} sessions | positives {pos:,} ({pos / n:.2%}) | t_pred {a} .. {b}")
