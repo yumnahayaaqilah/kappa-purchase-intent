@@ -12,7 +12,6 @@ Parts:
   p6     funnel per category and brand per month (views -> carts -> purchases)
   p7     time patterns: purchase rate of scored sessions and event volume by hour (UTC) and weekday
   anom   daily anomalies from metrics_daily (same rule as the dashboard)
-  p8     returning users: purchase rate by visit number, visits before the first purchase
   seg    score segments and expected value ranking on the test period (eval_log)
   early  how early: model quality vs share of buyer sessions still reachable, for K = 3, 5, 7, 10
 Output: results/insight_*.csv
@@ -27,7 +26,7 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-PARTS = ["p2", "p5", "p6", "p7", "anom", "seg", "early"]   # p8 dihapus: sampel per sesi tidak mewakili urutan kunjungan pengguna
+PARTS = ["p2", "p5", "p6", "p7", "anom", "seg", "early"]   # p8 (returning users) removed: a session sample does not keep each user's visit order
 ap = argparse.ArgumentParser()
 ap.add_argument("--part", nargs="+", default=PARTS, choices=PARTS)
 ap.add_argument("--sessions", default="ref/session_insights.parquet")
