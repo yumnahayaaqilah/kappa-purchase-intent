@@ -712,7 +712,7 @@ def view_customers(Hs, base):
     items = [(nm(r.category), int(r.purchases), "") for r in top.itertuples()]
     if unk:
         items.append(("Tanpa kategori", unk, "", REF))
-    a[2].markdown(card("Pembelian per Kategori", "Jumlah pembelian menurut kategori produk (dipetakan dari data Okt-Nov 2019; produk baru masuk unknown)",
+    a[2].markdown(card("Pembelian per Kategori", "Jumlah pembelian per kategori produk; produk tanpa kategori pada data Okt–Nov 2019 tercatat sebagai unknown",
                        hbars(items, short) if items else '<div class="note">Belum ada data.</div>', h=430,
                        tip=["Delapan kategori dengan pembelian terbanyak, ditambah pembelian tanpa kategori pada baris terakhir (abu-abu).",
                             f"Tanpa kategori: produk yang kategorinya tidak dapat ditentukan ({pc(unk / pu) if pu else '-'} dari seluruh "
