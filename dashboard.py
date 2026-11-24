@@ -637,12 +637,12 @@ def view_model(Hs, base, met, ok, w_auc):
         pr, rc, f1 = Hs.ops(p / 100)
         trs += (f'<tr class="{"best" if p == best else ""}"><td>{p}% skor teratas'
                 f'{"<span class=tag>F1 tertinggi model</span>" if p == best else ""}</td><td>{pc(pr, 0)}</td>'
-                f'<td>{pc(rc, 0)}</td><td>{dec(f1, 2)}</td><td>{dec(pr / base, 1)}x</td></tr>')
+                f'<td>{pc(rc, 0)}</td><td>{dec(f1, 2)}</td><td>{dec((pr / base if base else 0), 1)}x</td></tr>')
     rule = q_slow("SELECT count(*) FILTER (WHERE f_c > 0) AS n, coalesce(sum(y) FILTER (WHERE f_c > 0), 0) AS b FROM eval_log").iloc[0]
     if rule.n:
         rp, rr = rule.b / rule.n, rule.b / Hs.B
         trs += (f'<tr class="rule"><td>Aturan keranjang ({pc(rule.n / Hs.N, 0)} sesi)</td><td>{pc(rp, 0)}</td><td>{pc(rr, 0)}</td>'
-                f'<td>{dec(f1_of(rp, rr), 2)}</td><td>{dec(rp / base, 1)}x</td></tr>')
+                f'<td>{dec(f1_of(rp, rr), 2)}</td><td>{dec((rp / base if base else 0), 1)}x</td></tr>')
     b[1].markdown(card("Simulasi Penandaan Calon Pembeli", "Hasil apabila sebagian sesi dengan skor tertinggi ditandai sebagai calon pembeli",
                        '<table class="tb"><tr><th>Sesi ditandai</th><th>Precision (ketepatan)</th><th>Recall (cakupan)</th>'
                        '<th>F1</th><th>Lift</th></tr>'
@@ -819,7 +819,7 @@ def render():
     k[3].markdown(kpi("AUC", dec(w_auc, 2) if w_auc == w_auc else "-", "rata-rata harian (acak = 0,5)", ok.auc.tolist(),
                       tip="Rata-rata ROC-AUC harian, berbobot jumlah sesi."), unsafe_allow_html=True)
     k[4].markdown(kpi("Precision@5%", pc(w_p5, 0) if w_p5 == w_p5 else "-",
-                      f"lift {dec(w_p5 / base, 1)}x terhadap pemilihan acak" if w_p5 == w_p5 else "-", ok.p_at_5.tolist(),
+                      f"lift {dec((w_p5 / base if base else 0), 1)}x terhadap pemilihan acak" if w_p5 == w_p5 else "-", ok.p_at_5.tolist(),
                       tip="Rata-rata harian proporsi pembeli di antara 5% sesi dengan skor tertinggi."), unsafe_allow_html=True)
 
     view = st.segmented_control("Tampilan", ["Pipeline", "Model", "Pelanggan"], default="Pipeline", key="view",
