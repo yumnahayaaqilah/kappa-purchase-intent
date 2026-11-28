@@ -1,0 +1,55 @@
+table 'Benchmark Model'
+	lineageTag: d3b36323-77be-4e7a-8bdd-e38eef3a8169
+
+	measure 'ROC-AUC Online (Uji)' = LOOKUPVALUE ( 'Benchmark Model'[ROC-AUC], 'Benchmark Model'[Model], "Online LR (pipeline)" )
+		formatString: 0.000
+		lineageTag: c651fcd7-54db-4d42-90da-47e6becb6c69
+
+	measure 'PR-AUC Online (Uji)' = LOOKUPVALUE ( 'Benchmark Model'[PR-AUC], 'Benchmark Model'[Model], "Online LR (pipeline)" )
+		formatString: 0.000
+		lineageTag: dff09634-4018-4dbd-9544-8aff325e9a25
+
+	column Model
+		dataType: string
+		lineageTag: d23063d9-2e0e-4295-89c3-d84587cecf02
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Model]
+		sortByColumn: Urutan
+
+		annotation SummarizationSetBy = Automatic
+
+	column Urutan
+		dataType: int64
+		formatString: 0
+		lineageTag: e9ebf2d7-79b5-47ba-862c-952593f414c2
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Urutan]
+
+		annotation SummarizationSetBy = Automatic
+
+	column ROC-AUC
+		dataType: double
+		formatString: 0.000
+		lineageTag: a360c722-9776-418b-834e-511d19c385fd
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [ROC-AUC]
+
+		annotation SummarizationSetBy = Automatic
+
+	column PR-AUC
+		dataType: double
+		formatString: 0.000
+		lineageTag: 0af2d7ad-45c1-4dce-bdb8-025bcd4bacbc
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [PR-AUC]
+
+		annotation SummarizationSetBy = Automatic
+
+	partition 'Benchmark Model' = calculated
+		mode: import
+		source = DATATABLE ( "Model", STRING, "Urutan", INTEGER, "ROC-AUC", DOUBLE, "PR-AUC", DOUBLE, { { "Acak", 1, 0.499, 0.091 }, { "Aturan keranjang", 2, 0.682, 0.266 }, { "LR batch", 3, 0.734, 0.293 }, { "Online LR (pipeline)", 4, 0.735, 0.298 }, { "Gradient boosting", 5, 0.744, 0.317 } } )
+

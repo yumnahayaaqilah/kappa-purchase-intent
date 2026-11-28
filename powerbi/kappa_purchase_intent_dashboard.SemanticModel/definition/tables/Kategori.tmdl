@@ -1,0 +1,83 @@
+table Kategori
+	lineageTag: 7f04a2db-7239-47aa-9550-34741f336c44
+
+	measure 'Konversi Keranjang' = CALCULATE ( DIVIDE ( SUM ( Kategori[purchases] ), SUM ( Kategori[carts] ) ), KEEPFILTERS ( Kategori[category] <> "unknown" ) )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 4b0e8a6e-5880-4f04-9209-b005d474fb2e
+
+	measure 'Keranjang (Event)' = CALCULATE ( SUM ( Kategori[carts] ), KEEPFILTERS ( Kategori[category] <> "unknown" ) )
+		formatString: #,0
+		lineageTag: 47a16051-0685-4f94-9d01-82f69bf7d188
+
+	measure 'Pembelian (Event)' = CALCULATE ( SUM ( Kategori[purchases] ), KEEPFILTERS ( Kategori[category] <> "unknown" ) )
+		formatString: #,0
+		lineageTag: 8decee0e-117b-4cc3-a7f3-b5d6c1e2958d
+
+	measure 'Keranjang Non-elektronik' = CALCULATE ( [Keranjang (Event)], KEEPFILTERS ( Kategori[category] <> "electronics" ) )
+		formatString: #,0
+		lineageTag: 8807d9a6-a5c5-4250-bfc5-be79fb14ea70
+
+	measure 'Pembelian Non-elektronik' = CALCULATE ( [Pembelian (Event)], KEEPFILTERS ( Kategori[category] <> "electronics" ) )
+		formatString: #,0
+		lineageTag: f01f1202-cfa2-4bea-bc48-8fd738590bad
+
+	measure 'Keranjang Elektronik' = CALCULATE ( SUM ( Kategori[carts] ), Kategori[category] = "electronics" )
+		formatString: #,0
+		lineageTag: 27c79fba-176a-452b-92f8-d11d94ebb72c
+
+	measure 'Porsi Keranjang Elektronik' = DIVIDE ( [Keranjang Elektronik], CALCULATE ( SUM ( Kategori[carts] ), ALL ( Kategori ), Kategori[category] <> "unknown" ) )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 685a0048-94a6-4267-b82f-235e2cf90737
+
+	measure 'Porsi Pembelian Elektronik' = DIVIDE ( CALCULATE ( SUM ( Kategori[purchases] ), Kategori[category] = "electronics" ), CALCULATE ( SUM ( Kategori[purchases] ), ALL ( Kategori ), Kategori[category] <> "unknown" ) )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 6bd51c00-81bb-450e-8066-e00967cb6858
+
+	column category
+		dataType: string
+		lineageTag: c3bd6098-0cdb-48a0-9eb9-c7cf200dca23
+		summarizeBy: none
+		sourceColumn: category
+
+		annotation SummarizationSetBy = Automatic
+
+	column views
+		dataType: int64
+		formatString: 0
+		lineageTag: c6551ee1-1566-4cba-b48e-5a9d39b2a6c2
+		summarizeBy: sum
+		sourceColumn: views
+
+		annotation SummarizationSetBy = Automatic
+
+	column carts
+		dataType: int64
+		formatString: 0
+		lineageTag: ce0a3b6e-e3a3-485c-9a98-e92a4f6be297
+		summarizeBy: sum
+		sourceColumn: carts
+
+		annotation SummarizationSetBy = Automatic
+
+	column purchases
+		dataType: int64
+		formatString: 0
+		lineageTag: 3b57d0ed-d23d-4a49-b4fe-fc22b0d8805b
+		summarizeBy: sum
+		sourceColumn: purchases
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Kategori = m
+		mode: import
+		source =
+				let
+				    Source = PostgreSQL.Database("localhost:5432", "ecommerce_db"),
+				    public_category_insights = Source{[Schema="public",Item="category_insights"]}[Data]
+				in
+				    public_category_insights
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

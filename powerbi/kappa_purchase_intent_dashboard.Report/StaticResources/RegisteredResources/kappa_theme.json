@@ -1,0 +1,102 @@
+{
+  "name": "Kappa Clean",
+  "dataColors": [
+    "#3F6B8E",
+    "#C46A26",
+    "#7FA7C7",
+    "#9AA5AB",
+    "#2F4F66",
+    "#E3A36F",
+    "#B8CCDC",
+    "#5E6A70"
+  ],
+  "background": "#FFFFFF",
+  "foreground": "#1C262C",
+  "tableAccent": "#3F6B8E",
+  "good": "#3F6B8E",
+  "neutral": "#9AA5AB",
+  "bad": "#C46A26",
+  "textClasses": {
+    "callout": {
+      "fontSize": 28,
+      "fontFace": "Segoe UI Semibold",
+      "color": "#1C262C"
+    },
+    "title": {
+      "fontSize": 12,
+      "fontFace": "Segoe UI Semibold",
+      "color": "#1C262C"
+    },
+    "header": {
+      "fontSize": 12,
+      "fontFace": "Segoe UI Semibold",
+      "color": "#1C262C"
+    },
+    "label": {
+      "fontSize": 10,
+      "fontFace": "Segoe UI",
+      "color": "#5E6A70"
+    }
+  },
+  "visualStyles": {
+    "*": {
+      "*": {
+        "background": [
+          {
+            "show": true,
+            "color": {
+              "solid": {
+                "color": "#FFFFFF"
+              }
+            },
+            "transparency": 0
+          }
+        ],
+        "border": [
+          {
+            "show": true,
+            "color": {
+              "solid": {
+                "color": "#E6E8EB"
+              }
+            },
+            "radius": 8
+          }
+        ],
+        "dropShadow": [
+          {
+            "show": false
+          }
+        ],
+        "visualHeader": [
+          {
+            "show": true
+          }
+        ]
+      }
+    },
+    "page": {
+      "*": {
+        "background": [
+          {
+            "color": {
+              "solid": {
+                "color": "#F5F6F8"
+              }
+            },
+            "transparency": 0
+          }
+        ],
+        "outspace": [
+          {
+            "color": {
+              "solid": {
+                "color": "#F5F6F8"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

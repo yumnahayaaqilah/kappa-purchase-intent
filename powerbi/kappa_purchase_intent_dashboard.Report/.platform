@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Report",
+    "displayName": "kappa_purchase_intent_dashboard"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "0214087e-5fdf-4b37-bc10-b900aa4247e4"
+  }
+}

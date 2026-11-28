@@ -1,0 +1,90 @@
+table 'Metrik Harian'
+	lineageTag: 8328f64c-01ba-4198-a9c9-f32140228f69
+
+	measure 'AUC Rata-rata' = DIVIDE ( SUMX ( 'Metrik Harian', 'Metrik Harian'[auc] * 'Metrik Harian'[n] ), SUMX ( FILTER ( 'Metrik Harian', NOT ISBLANK ( 'Metrik Harian'[auc] ) ), 'Metrik Harian'[n] ) )
+		formatString: 0.000
+		lineageTag: 3e822aa4-0d15-44ae-91ee-6dba91b6faed
+
+	measure 'AUC 7 Hari' = CALCULATE ( [AUC Rata-rata], DATESINPERIOD ( Tanggal[Date], MAX ( Tanggal[Date] ), -7, DAY ) )
+		formatString: 0.000
+		lineageTag: d8a6a5cb-e3cc-440e-8742-f6fba75b20c9
+
+	column day
+		dataType: dateTime
+		formatString: Long Date
+		lineageTag: c01de2fb-a6b8-4866-89f2-f85d9dd4014a
+		summarizeBy: none
+		sourceColumn: day
+
+		variation Variation
+			isDefault
+			relationship: b4ec46bd-7844-4878-83d8-3680ae8a5f7e
+			defaultHierarchy: LocalDateTable_6a188c8d-b6fe-46d1-b045-f185e775fffa.'Date Hierarchy'
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column n
+		dataType: int64
+		formatString: 0
+		lineageTag: 5c263957-e6f3-4ab3-8d9d-9e8f798eb930
+		summarizeBy: sum
+		sourceColumn: n
+
+		annotation SummarizationSetBy = Automatic
+
+	column pos_rate
+		dataType: double
+		lineageTag: 016557e2-d385-4103-b8af-33ff86793a81
+		summarizeBy: sum
+		sourceColumn: pos_rate
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column auc
+		dataType: double
+		lineageTag: 6c0023f8-b9ab-4ade-b83c-23e3bc106613
+		summarizeBy: sum
+		sourceColumn: auc
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column pr_auc
+		dataType: double
+		lineageTag: b63504cb-898f-45ae-b9e0-5ae2db740c56
+		summarizeBy: sum
+		sourceColumn: pr_auc
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column p_at_5
+		dataType: double
+		lineageTag: 3f063f1d-4176-4e7f-916c-c33e301e7604
+		summarizeBy: sum
+		sourceColumn: p_at_5
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	partition 'Metrik Harian' = m
+		mode: import
+		source =
+				let
+				    Source = PostgreSQL.Database("localhost:5432", "ecommerce_db"),
+				    public_metrics_daily = Source{[Schema="public",Item="metrics_daily"]}[Data],
+				    #"Removed Columns" = Table.RemoveColumns(public_metrics_daily,{"updated_at"})
+				in
+				    #"Removed Columns"
+
+	annotation PBI_ResultType = Table
+
+	annotation PBI_NavigationStepName = Navigation
+

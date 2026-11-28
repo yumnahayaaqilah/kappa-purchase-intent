@@ -1,0 +1,248 @@
+table Sesi
+	lineageTag: 89344599-e765-4838-bd63-f16c6428f3cb
+
+	measure 'Total Sesi' = COUNTROWS ( Sesi )
+		formatString: #,0
+		lineageTag: 80204b61-a961-4835-a694-60789a5209c8
+
+	measure 'Sesi Membeli' = SUM ( Sesi[beli] )
+		formatString: #,0
+		lineageTag: 3b417587-c0a5-45a2-b7e7-7844682ce1f0
+
+	measure 'Tingkat Pembelian' = DIVIDE ( [Sesi Membeli], [Total Sesi] )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 2faf1294-1d8e-42c5-91d0-21bd22960868
+
+	measure 'Rata-rata Skor' = AVERAGE ( Sesi[prob] )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: ac1c4b34-a36c-441d-8b3e-ed8da7221759
+
+	measure 'Total Sesi (Label)' = FORMAT ( [Total Sesi], "#,0" )
+		lineageTag: 955b4d37-3115-4840-88ef-63787d43e0c8
+
+	measure 'Precision Top 5%' = DIVIDE ( CALCULATE ( [Sesi Membeli], Sesi[persentil] <= 5 ), CALCULATE ( [Total Sesi], Sesi[persentil] <= 5 ) )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 24cfbb79-b9e7-4335-9416-3e9042783209
+
+	measure 'Recall Top 5%' = DIVIDE ( CALCULATE ( [Sesi Membeli], Sesi[persentil] <= 5 ), [Sesi Membeli] )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: f948646c-032d-4bce-bd1f-ab2a158813fe
+
+	measure 'Lift Top 5%' = DIVIDE ( [Precision Top 5%], [Tingkat Pembelian] )
+		formatString: 0.0"x"
+		lineageTag: b6691989-e106-4396-8a59-8af25820046c
+
+	measure 'Persen Berkeranjang' = DIVIDE ( CALCULATE ( [Total Sesi], Sesi[n_keranjang] > 0 ), [Total Sesi] )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 118fb112-8bd1-4bf0-afb4-0ecdaac520b5
+
+	measure 'Porsi Pembeli' = DIVIDE ( [Sesi Membeli], CALCULATE ( [Sesi Membeli], ALL ( Sesi[Segmen Skor] ) ) )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 02e018a1-f9d1-400d-98dc-ce86138b11a4
+
+	measure 'Sesi Dinilai (Label)' = FORMAT ( [Total Sesi], "#,0" )
+		lineageTag: 888ae33f-6c18-4638-822a-4361944ccda5
+
+	measure 'Total Sesi (Uji)' = CALCULATE ( [Total Sesi], Sesi[periode] = "Uji" )
+		formatString: #,0
+		lineageTag: ce76da51-f932-4e6b-883d-a0cf45efb033
+
+	measure 'Sesi Membeli (Uji)' = CALCULATE ( [Sesi Membeli], Sesi[periode] = "Uji" )
+		formatString: #,0
+		lineageTag: 058f1b05-0b62-425d-9bff-682f0417f475
+
+	measure 'Tingkat Pembelian (Uji)' = CALCULATE ( [Tingkat Pembelian], Sesi[periode] = "Uji" )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 55fee260-e23a-4da8-91ed-edd9ec85b4e6
+
+	measure 'Rata-rata Skor (Uji)' = CALCULATE ( [Rata-rata Skor], Sesi[periode] = "Uji" )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 7d845d61-ba87-44a9-93bd-3df2062c3a7a
+
+	measure 'Persen Berkeranjang (Uji)' = CALCULATE ( [Persen Berkeranjang], Sesi[periode] = "Uji" )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 67794934-d604-44d7-9494-e24f2c907396
+
+	measure 'Porsi Pembeli (Uji)' = DIVIDE ( [Sesi Membeli (Uji)], CALCULATE ( [Sesi Membeli (Uji)], ALL ( Sesi[Segmen Skor] ) ) )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: c76ddc3f-48a1-4f33-962f-c47ffe60d611
+
+	measure 'Porsi Sesi (Uji)' = DIVIDE ( [Total Sesi (Uji)], CALCULATE ( [Total Sesi (Uji)], ALL ( Sesi[Segmen Skor] ) ) )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: b956a8dc-0181-427f-b068-df29bdced693
+
+	measure 'Precision 5% (Uji)' = CALCULATE ( [Precision Top 5%], Sesi[periode] = "Uji" )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 09970f3a-cf3c-4977-a7aa-b121fee0da7a
+
+	measure 'Recall 5% (Uji)' = CALCULATE ( [Recall Top 5%], Sesi[periode] = "Uji" )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: d329fd37-5fa9-4c9f-b02f-a9ca3d0e2e5f
+
+	measure 'Lift 5% (Uji)' = DIVIDE ( [Precision 5% (Uji)], [Tingkat Pembelian (Uji)] )
+		formatString: 0.0"x"
+		lineageTag: 29bbd79e-04ae-4d6f-9252-acaa045772a7
+
+	measure 'Precision @K' = VAR k = SELECTEDVALUE ( 'Target K'[Target K %] ) RETURN CALCULATE ( DIVIDE ( CALCULATE ( [Sesi Membeli], Sesi[persentil] <= k ), CALCULATE ( [Total Sesi], Sesi[persentil] <= k ) ), Sesi[periode] = "Uji" )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 74952d98-a20b-4550-868e-d42f8a00f31b
+
+	measure 'Recall @K' = VAR k = SELECTEDVALUE ( 'Target K'[Target K %] ) RETURN CALCULATE ( DIVIDE ( CALCULATE ( [Sesi Membeli], Sesi[persentil] <= k ), [Sesi Membeli] ), Sesi[periode] = "Uji" )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 71c321d9-50fa-4abd-8c7e-09a762a8da60
+
+	measure 'Lift @K' = DIVIDE ( [Precision @K], [Tingkat Pembelian (Uji)] )
+		formatString: 0.0"x"
+		lineageTag: 33c71763-250d-4f84-9ba3-55482eeac45b
+
+	measure 'Tingkat Pembelian 7 Hari' = CALCULATE ( [Tingkat Pembelian], DATESINPERIOD ( Tanggal[Date], MAX ( Tanggal[Date] ), -7, DAY ) )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 704c1066-59e7-4f54-a1c2-71cbf0d9ec55
+
+	measure 'Porsi Pembeli Rendah (Uji)' = CALCULATE ( [Porsi Pembeli (Uji)], Sesi[Segmen Skor] = "3 Rendah" )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: ffcda885-8b56-40d3-91ae-3a90fb13f8dd
+
+	column session_id
+		dataType: string
+		lineageTag: ef44e381-4627-4bec-abab-8d8163ad20ef
+		summarizeBy: none
+		sourceColumn: session_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column tanggal
+		dataType: dateTime
+		formatString: Long Date
+		lineageTag: 15f05f0c-3ca0-4d52-ae54-6d9bcb9c37a5
+		summarizeBy: none
+		sourceColumn: tanggal
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column jam_utc
+		dataType: int64
+		formatString: 0
+		lineageTag: 5f182a73-57a4-4892-9807-f2ca57ff8c50
+		summarizeBy: sum
+		sourceColumn: jam_utc
+
+		annotation SummarizationSetBy = Automatic
+
+	column n_keranjang
+		dataType: int64
+		formatString: 0
+		lineageTag: a5ebfec4-1f2a-429a-9dd8-f019ce0d9e07
+		summarizeBy: sum
+		sourceColumn: n_keranjang
+
+		annotation SummarizationSetBy = Automatic
+
+	column harga_rata
+		dataType: double
+		lineageTag: be1d6ab4-2cf4-41cd-8fd9-682f88ba5e75
+		summarizeBy: sum
+		sourceColumn: harga_rata
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column harga_max
+		dataType: double
+		lineageTag: f1b6fbb1-e0dc-4a62-95e4-f01372243a32
+		summarizeBy: sum
+		sourceColumn: harga_max
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column durasi_detik
+		dataType: double
+		lineageTag: 608695f6-84f1-4d0c-9439-6d356886381d
+		summarizeBy: sum
+		sourceColumn: durasi_detik
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column prob
+		dataType: double
+		lineageTag: 08b38e4a-686a-4548-a4c3-4273377bf084
+		summarizeBy: sum
+		sourceColumn: prob
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column beli
+		dataType: int64
+		formatString: 0
+		lineageTag: de793ea7-f2e2-4377-9b85-6236bf01bd9f
+		summarizeBy: sum
+		sourceColumn: beli
+
+		annotation SummarizationSetBy = Automatic
+
+	column periode
+		dataType: string
+		lineageTag: 814f44fd-70d7-4750-88ab-2899a464569a
+		summarizeBy: none
+		sourceColumn: periode
+
+		annotation SummarizationSetBy = Automatic
+
+	column persentil
+		dataType: int64
+		formatString: 0
+		lineageTag: c3e5ba4f-cad5-4e80-9c55-7e1fbc5caefa
+		summarizeBy: sum
+		sourceColumn: persentil
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Segmen Skor' = SWITCH ( TRUE (), Sesi[persentil] <= 5, "1 Tinggi", Sesi[persentil] <= 20, "2 Sedang", "3 Rendah" )
+		dataType: string
+		lineageTag: af0f199f-97ca-447a-9d38-b1f591b211da
+		summarizeBy: none
+
+		annotation SummarizationSetBy = Automatic
+
+	column Desil = ROUNDUP ( Sesi[persentil] / 10, 0 )
+		dataType: int64
+		formatString: 0
+		lineageTag: 7f11abf0-f609-4f63-911f-335c83a8e749
+		summarizeBy: none
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Kelompok Harga' = SWITCH ( TRUE (), Sesi[harga_max] < 10, "1 < 10", Sesi[harga_max] < 50, "2 10–50", Sesi[harga_max] < 200, "3 50–200", Sesi[harga_max] < 1000, "4 200–1.000", "5 ≥ 1.000" )
+		dataType: string
+		lineageTag: f70d1033-1b4e-416a-afd1-660856d1ce4e
+		summarizeBy: none
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Ada Keranjang' = IF ( Sesi[n_keranjang] > 0, "Ada keranjang", "Tanpa keranjang" )
+		dataType: string
+		lineageTag: 5e803c56-0aa1-42c2-8832-1d6c657626c4
+		summarizeBy: none
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Sesi = m
+		mode: import
+		source =
+				let
+				    Source = PostgreSQL.Database("localhost:5432", "ecommerce_db"),
+				    public_pbi_sessions = Source{[Schema="public",Item="pbi_sessions"]}[Data]
+				in
+				    public_pbi_sessions
+
+	annotation PBI_ResultType = Table
+

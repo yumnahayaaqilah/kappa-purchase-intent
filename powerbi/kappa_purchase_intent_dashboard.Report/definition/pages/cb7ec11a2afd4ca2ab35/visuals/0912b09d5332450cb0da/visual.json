@@ -1,0 +1,187 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.13.0/schema.json",
+  "name": "0912b09d5332450cb0da",
+  "position": {
+    "x": 1496,
+    "y": 662,
+    "z": 24000,
+    "height": 394,
+    "width": 400,
+    "tabOrder": 24000
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Mengapa online LR dipilih",
+                    "textStyle": {
+                      "fontSize": "13pt",
+                      "color": "#1C262C",
+                      "fontWeight": "bold"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Akurasi: ",
+                    "textStyle": {
+                      "fontSize": "11pt",
+                      "color": "#3F6B8E",
+                      "fontWeight": "bold"
+                    }
+                  },
+                  {
+                    "value": "setara LR batch (0,735 vs 0,734); gradient boosting hanya +0,009.",
+                    "textStyle": {
+                      "fontSize": "11pt",
+                      "color": "#1C262C"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Operasional: ",
+                    "textStyle": {
+                      "fontSize": "11pt",
+                      "color": "#3F6B8E",
+                      "fontWeight": "bold"
+                    }
+                  },
+                  {
+                    "value": "belajar per sesi tanpa pelatihan ulang, ringan untuk streaming.",
+                    "textStyle": {
+                      "fontSize": "11pt",
+                      "color": "#1C262C"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Interpretasi: ",
+                    "textStyle": {
+                      "fontSize": "11pt",
+                      "color": "#3F6B8E",
+                      "fontWeight": "bold"
+                    }
+                  },
+                  {
+                    "value": "skor terkalibrasi dan bobot mudah dijelaskan.",
+                    "textStyle": {
+                      "fontSize": "11pt",
+                      "color": "#1C262C"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Pengembangan: ",
+                    "textStyle": {
+                      "fontSize": "11pt",
+                      "color": "#C46A26",
+                      "fontWeight": "bold"
+                    }
+                  },
+                  {
+                    "value": "fitur keranjang × harga menaikkan ROC-AUC ke 0,744.",
+                    "textStyle": {
+                      "fontSize": "11pt",
+                      "color": "#1C262C"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "visualContainerObjects": {
+      "background": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "color": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#FFFFFF'"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "border": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "padding": [
+        {
+          "properties": {
+            "top": {
+              "expr": {
+                "Literal": {
+                  "Value": "10D"
+                }
+              }
+            },
+            "bottom": {
+              "expr": {
+                "Literal": {
+                  "Value": "10D"
+                }
+              }
+            },
+            "left": {
+              "expr": {
+                "Literal": {
+                  "Value": "16D"
+                }
+              }
+            },
+            "right": {
+              "expr": {
+                "Literal": {
+                  "Value": "16D"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

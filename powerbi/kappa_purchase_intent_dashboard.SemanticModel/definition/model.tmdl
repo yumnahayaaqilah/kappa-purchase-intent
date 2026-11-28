@@ -1,0 +1,26 @@
+model Model
+	culture: en-US
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	sourceQueryCulture: en-ID
+	valueFilterBehavior: independent
+	dataAccessOptions
+		legacyRedirects
+		returnErrorValuesAsNull
+
+annotation __PBI_TimeIntelligenceEnabled = 1
+
+annotation PBI_QueryOrder = ["Sesi","Metrik Harian","Kategori"]
+
+annotation PBI_ProTooling = ["DevMode"]
+
+ref table Sesi
+ref table DateTableTemplate_e6b06186-b481-4299-8687-4091e877e952
+ref table 'Metrik Harian'
+ref table LocalDateTable_6a188c8d-b6fe-46d1-b045-f185e775fffa
+ref table Kategori
+ref table Tanggal
+ref table 'Benchmark Model'
+ref table 'Target K'
+
+ref cultureInfo en-US
+

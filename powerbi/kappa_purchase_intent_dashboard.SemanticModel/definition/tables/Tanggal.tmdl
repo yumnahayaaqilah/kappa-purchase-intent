@@ -1,0 +1,64 @@
+table Tanggal
+	lineageTag: 9cec9af9-18bd-47a2-a0e8-7d32e709cdea
+	dataCategory: Time
+
+	column Date
+		isKey
+		formatString: dd mmm yyyy
+		lineageTag: 0a5a8818-4e7a-4485-9a02-4f1270e1ef10
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Date]
+
+		annotation SummarizationSetBy = Automatic
+
+	column Bulan
+		lineageTag: cf01fef8-8db6-4308-8e0e-f3674f7c9f82
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Bulan]
+		sortByColumn: 'No Bulan'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'No Bulan'
+		formatString: 0
+		lineageTag: b24206e1-d4ff-44e3-a9da-ad35bb87dca4
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [No Bulan]
+
+		annotation SummarizationSetBy = Automatic
+
+	column Hari
+		lineageTag: bbf78713-f676-4af5-89b4-3c1b42758f5e
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Hari]
+		sortByColumn: 'No Hari'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'No Hari'
+		formatString: 0
+		lineageTag: a6af3a45-f2a6-4e23-8333-0de830753278
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [No Hari]
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Tanggal = calculated
+		mode: import
+		source =
+				
+				ADDCOLUMNS (
+				    CALENDAR ( DATE ( 2019, 10, 1 ), DATE ( 2020, 4, 30 ) ),
+				    "Bulan", FORMAT ( [Date], "MMM yyyy" ),
+				    "No Bulan", YEAR ( [Date] ) * 100 + MONTH ( [Date] ),
+				    "Hari", FORMAT ( [Date], "dddd" ),
+				    "No Hari", WEEKDAY ( [Date], 2 )
+				)
+
+	annotation PBI_Id = a01f301609e840e3b882ddd60541b8ef
+

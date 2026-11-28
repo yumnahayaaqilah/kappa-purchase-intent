@@ -1,0 +1,23 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/2.1.0/schema.json",
+  "name": "b58f2191c7d04e11a43b",
+  "displayName": "Kategori dan Waktu",
+  "displayOption": "FitToPage",
+  "height": 1080,
+  "width": 1920,
+  "objects": {
+    "outspacePane": [
+      {
+        "properties": {
+          "headerSize": {
+            "expr": {
+              "Literal": {
+                "Value": "9L"
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

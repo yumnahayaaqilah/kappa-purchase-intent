@@ -11,3 +11,5 @@ __pycache__/
 .env
 ref/
 *.log
+powerbi/**/.pbi/cache.abf
+powerbi/**/.pbi/localSettings.json

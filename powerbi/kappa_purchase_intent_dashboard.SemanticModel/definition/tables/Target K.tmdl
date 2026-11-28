@@ -1,0 +1,17 @@
+table 'Target K'
+	lineageTag: 75efddb8-c795-42b6-aecd-c99dc9230fd1
+
+	column 'Target K %'
+		dataType: int64
+		formatString: 0
+		lineageTag: 95263a93-e72a-429e-955f-d8283ec8d6de
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Target K %]
+
+		annotation SummarizationSetBy = Automatic
+
+	partition 'Target K' = calculated
+		mode: import
+		source = DATATABLE ( "Target K %", INTEGER, { { 1 }, { 2 }, { 5 }, { 10 }, { 20 }, { 30 }, { 50 } } )
+

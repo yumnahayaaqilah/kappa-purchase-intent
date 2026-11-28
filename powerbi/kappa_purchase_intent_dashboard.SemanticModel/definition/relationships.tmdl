@@ -1,0 +1,15 @@
+relationship b4ec46bd-7844-4878-83d8-3680ae8a5f7e
+	joinOnDateBehavior: datePartOnly
+	fromColumn: 'Metrik Harian'.day
+	toColumn: LocalDateTable_6a188c8d-b6fe-46d1-b045-f185e775fffa.Date
+
+relationship ea961645-d5c0-4bfd-deac-0679b9d783b8
+	fromColumn: Sesi.tanggal
+	toColumn: Tanggal.Date
+
+relationship 60278572-c48e-315a-54e0-5585a77f7c7b
+	crossFilteringBehavior: bothDirections
+	fromCardinality: one
+	fromColumn: Tanggal.Date
+	toColumn: 'Metrik Harian'.day
+
