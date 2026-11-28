@@ -16,3 +16,4 @@ powerbi/**/.pbi/localSettings.json
 echo backup_final.dump>> .gitignore
 echo powerbi/**/.pbi/cache.abf>> .gitignore
 echo powerbi/**/.pbi/localSettings.json>> .gitignorebackup_final.dump
+desktop.ini
