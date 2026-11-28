@@ -464,51 +464,5 @@
       ]
     },
     "drillFilterOtherVisuals": true
-  },
-  "filterConfig": {
-    "filters": [
-      {
-        "name": "37733bd441cfea962899",
-        "field": {
-          "Column": {
-            "Expression": {
-              "SourceRef": {
-                "Entity": "Sesi"
-              }
-            },
-            "Property": "jam_utc"
-          }
-        },
-        "type": "Advanced"
-      },
-      {
-        "name": "69398351d995d5da6532",
-        "field": {
-          "Column": {
-            "Expression": {
-              "SourceRef": {
-                "Entity": "Tanggal"
-              }
-            },
-            "Property": "Hari"
-          }
-        },
-        "type": "Categorical"
-      },
-      {
-        "name": "01624d8cea6020e57b70",
-        "field": {
-          "Measure": {
-            "Expression": {
-              "SourceRef": {
-                "Entity": "Sesi"
-              }
-            },
-            "Property": "Tingkat Pembelian"
-          }
-        },
-        "type": "Advanced"
-      }
-    ]
   }
 }

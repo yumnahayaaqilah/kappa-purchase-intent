@@ -81,8 +81,8 @@ Full 7-month run, re-computed from the HDFS lake. Test period: 26 Feb to 30 Apr 
   when about 10% of sessions are flagged (`results/thresholds.csv`).
 - The simple cart rule is a strong baseline when about 11% of sessions are flagged; the model adds
   value by ranking within that group.
-- The ceiling comes from the features, not the model: logistic regression with interaction
-  features reaches the same ROC-AUC as gradient boosting (0.744).
+- The ceiling comes from the features, not the model: logistic regression with all derived
+  features (including cart interactions) reaches the same ROC-AUC as gradient boosting (0.744).
 - Scores are well calibrated (ECE 0.017, `results/calibration.csv`).
 - Predicting at the third event is the best trade-off: waiting until the fifth event raises ROC-AUC
   only to 0.746, while the share of buyer sessions that can still be reached falls from 58% to 34%

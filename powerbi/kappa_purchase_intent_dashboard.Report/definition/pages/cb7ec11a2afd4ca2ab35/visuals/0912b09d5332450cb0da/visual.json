@@ -1,5 +1,5 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.13.0/schema.json",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.15.0/schema.json",
   "name": "0912b09d5332450cb0da",
   "position": {
     "x": 1496,
@@ -21,9 +21,9 @@
                   {
                     "value": "Mengapa online LR dipilih",
                     "textStyle": {
+                      "fontWeight": "bold",
                       "fontSize": "13pt",
-                      "color": "#1C262C",
-                      "fontWeight": "bold"
+                      "color": "#1c262c"
                     }
                   }
                 ]
@@ -33,16 +33,16 @@
                   {
                     "value": "Akurasi: ",
                     "textStyle": {
+                      "fontWeight": "bold",
                       "fontSize": "11pt",
-                      "color": "#3F6B8E",
-                      "fontWeight": "bold"
+                      "color": "#3f6b8e"
                     }
                   },
                   {
                     "value": "setara LR batch (0,735 vs 0,734); gradient boosting hanya +0,009.",
                     "textStyle": {
                       "fontSize": "11pt",
-                      "color": "#1C262C"
+                      "color": "#1c262c"
                     }
                   }
                 ]
@@ -52,16 +52,16 @@
                   {
                     "value": "Operasional: ",
                     "textStyle": {
+                      "fontWeight": "bold",
                       "fontSize": "11pt",
-                      "color": "#3F6B8E",
-                      "fontWeight": "bold"
+                      "color": "#3f6b8e"
                     }
                   },
                   {
                     "value": "belajar per sesi tanpa pelatihan ulang, ringan untuk streaming.",
                     "textStyle": {
                       "fontSize": "11pt",
-                      "color": "#1C262C"
+                      "color": "#1c262c"
                     }
                   }
                 ]
@@ -71,16 +71,16 @@
                   {
                     "value": "Interpretasi: ",
                     "textStyle": {
+                      "fontWeight": "bold",
                       "fontSize": "11pt",
-                      "color": "#3F6B8E",
-                      "fontWeight": "bold"
+                      "color": "#3f6b8e"
                     }
                   },
                   {
                     "value": "skor terkalibrasi dan bobot mudah dijelaskan.",
                     "textStyle": {
                       "fontSize": "11pt",
-                      "color": "#1C262C"
+                      "color": "#1c262c"
                     }
                   }
                 ]
@@ -90,16 +90,16 @@
                   {
                     "value": "Pengembangan: ",
                     "textStyle": {
+                      "fontWeight": "bold",
                       "fontSize": "11pt",
-                      "color": "#C46A26",
-                      "fontWeight": "bold"
+                      "color": "#c46a26"
                     }
                   },
                   {
-                    "value": "fitur keranjang × harga menaikkan ROC-AUC ke 0,744.",
+                    "value": "Interaksi keranjang × harga dan surasi menaikkan ROC ke 0,740; dengan semua fitur turunan 0,744. ",
                     "textStyle": {
                       "fontSize": "11pt",
-                      "color": "#1C262C"
+                      "color": "#1c262c"
                     }
                   }
                 ]
