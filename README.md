@@ -6,7 +6,8 @@ as each session's outcome becomes known.
 
 Seven months of clickstream data (41.1 million events, a 10% session sample of the REES46 dataset)
 flow through Kafka, are mirrored to an HDFS data lake, processed by Spark Structured Streaming with
-an online logistic regression (River), stored in PostgreSQL and monitored in a Streamlit dashboard.
+an online logistic regression (River), stored in PostgreSQL, monitored in a Streamlit dashboard
+and analysed in a Power BI report.
 
 Course project for Teknologi Big Data (TPL1309), Sekolah Vokasi IPB University.
 
@@ -20,6 +21,7 @@ flowchart LR
     C -.->|"re-compute (--source lake)"| D
     D --> E[("PostgreSQL")]
     E --> F["Streamlit dashboard"]
+    E --> G["Power BI report"]
 ```
 
 | Layer | Component | Role |
@@ -30,6 +32,7 @@ flowchart LR
 | Processing | `pipeline/stream_processor.py` | Two streaming queries on the same source: sessions with online learning, and category statistics |
 | Serving | PostgreSQL (`sql/schema.sql`) | Predictions, evaluation log, model state, daily metrics |
 | Dashboard | `dashboard.py` | Pipeline status, model performance and customer behaviour |
+| BI report | `powerbi/` | Four-page analytical report on the serving layer |
 
 The same `stream_processor` code reads either Kafka or the HDFS lake. Re-computing results means
 replaying the log through the same job, not running a separate batch layer.
@@ -108,12 +111,50 @@ Full 7-month run, re-computed from the HDFS lake. Test period: 26 Feb to 30 Apr 
 | `evaluation/tune_validation.py`: optimizer and learning rate on the validation split | AdaGrad is stable from 0.1 to 2.0 (ROC-AUC 0.745 to 0.747); SGD drops from 0.744 to 0.720 as the learning rate grows; AdaGrad 0.5 is within 0.0003 of the best |
 | `evaluation/check_cart_logging.py`: daily carts vs purchases | Cart events are incomplete before 8 Nov 2019; behaviour analyses on carts use data from that date |
 
+## Power BI report
+
+A four-page report on the PostgreSQL serving layer, saved as a Power BI Project
+(`powerbi/kappa_purchase_intent_dashboard.pbip`).
+
+| Page | Question it answers |
+|---|---|
+| Ringkasan | How often do sessions convert, and how well does the model rank them? |
+| Kinerja Model | How does the online model compare with baselines, and is it calibrated? |
+| Segmen Pelanggan | Which score segments matter and what action fits each one? |
+| Kategori dan Waktu | When do visitors buy, and which categories convert from cart? |
+
+![Ringkasan](docs/powerbi/01_ringkasan.png)
+![Kinerja Model](docs/powerbi/02_kinerja_model.png)
+![Segmen Pelanggan](docs/powerbi/03_segmen.png)
+![Kategori dan Waktu](docs/powerbi/04_kategori_waktu.png)
+
+**Data model.** `Sesi` is the fact table (3.7M scored sessions from `pbi_sessions`, features
+back-transformed from log scale, a test-period flag and a score percentile within each period),
+joined to a `Tanggal` date dimension and `Metrik Harian`. `Kategori` holds category event counts.
+Two small calculated tables support the model comparison (`Benchmark Model`) and the top-K
+trade-off (`Target K`).
+
+**Key DAX measures.** `Precision @K`, `Recall @K` and `Lift @K` evaluate the top K% of the test
+period dynamically; `Porsi Pembeli (Uji)` gives each segment's share of buyers; `AUC Rata-rata`
+is the session-weighted daily ROC-AUC, excluding days without buyers; 7-day rolling averages use
+`DATESINPERIOD`.
+
+**Metric notes.**
+- Model KPIs use the test period and match `results/metrics.csv`. Baseline scores come from the
+  offline evaluation and are not recomputed in Power BI.
+- Report segments are exact percentiles within the test period (5% / 15% / 80%, buying at 42.0%,
+  19.4% and 5.2%). The results above fix thresholds on the earlier 70% instead (41.8%, 17.8%,
+  5.2%), so the two sets of figures differ slightly by design.
+- Category figures are event counts for the whole period, excluding `unknown`. Electronics is
+  shown separately (71.7% of carts) so the other categories stay readable.
+
 ## Requirements
 
 - Python 3 with the packages in `requirements.txt` (PySpark 4.2, River, DuckDB 1.5.6, Streamlit)
 - Java 17
 - Docker for Kafka (`apache/kafka:3.9.0`) and HDFS (`apache/hadoop:3`, see `infra/hdfs/`)
 - PostgreSQL 18
+- Power BI Desktop (Windows) for the report
 
 **Windows notes**
 
@@ -217,6 +258,14 @@ python -m evaluation.analyze_insights --part p2 p5 p6 p7 --since 2019-11-08   # 
 python -m evaluation.analyze_insights --part anom seg early
 ```
 
+**Power BI report**
+
+```bash
+psql -U postgres -d ecommerce_db -f sql/pbi_sessions.sql
+```
+
+Open `powerbi/kappa_purchase_intent_dashboard.pbip` in Power BI Desktop and click **Refresh**.
+
 ## Repository layout
 
 | Path | Contents |
@@ -228,6 +277,9 @@ python -m evaluation.analyze_insights --part anom seg early
 | `sql/schema.sql` | PostgreSQL tables |
 | `infra/hdfs/` | Single-node HDFS with Docker Compose |
 | `dashboard.py` | Streamlit dashboard |
+| `powerbi/` | Power BI Project (report and semantic model) |
+| `docs/powerbi/` | Report screenshots |
+| `sql/pbi_sessions.sql` | Session table for the Power BI report |
 
 ## Limitations
 
